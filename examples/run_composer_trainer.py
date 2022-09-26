@@ -17,6 +17,8 @@ import sys
 import tempfile
 import warnings
 
+import torch
+
 from composer.loggers import LogLevel
 from composer.trainer.trainer_hparams import TrainerHparams
 from composer.utils import dist, warn_yahp_deprecation
@@ -25,6 +27,8 @@ from composer.utils.misc import warning_on_one_line
 
 def _main():
     warnings.formatwarning = warning_on_one_line
+
+    torch.backends.cudnn.benchmark = True
 
     global_rank = dist.get_global_rank()
 
