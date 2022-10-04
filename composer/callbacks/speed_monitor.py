@@ -103,13 +103,13 @@ class SpeedMonitor(Callback):
 
     def batch_end(self, state: State, logger: Logger):
         if self.batch_start_num_samples == 0:
-            self.set_batch_starting_stats()
+            self.set_batch_starting_stats(state)
         else:
             batch_num_samples = int(state.timestamp.sample) - self.batch_start_num_samples
             batch_wct = state.timestamp.total_wct.total_seconds() - self.batch_start_wct
 
             # Resetting it for the next batch as done in HF
-            self.set_batch_starting_stats()
+            self.set_batch_starting_stats(state)
 
             # Add the new element
             self.batch_wct_buffer.append(batch_wct)
