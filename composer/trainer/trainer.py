@@ -1598,6 +1598,7 @@ class Trainer:
                     dataloader.sampler.set_epoch(int(self.state.timestamp.epoch))
 
                 for batch_idx, self.state.batch in enumerate(self._iter_dataloader(TrainerMode.TRAIN)):
+                    self.engine.run_event(Event.BATCH_START)
                     # if resuming, skip dataloader forward to the minibatch index
                     if batch_idx < int(self.state.timestamp.batch_in_epoch):
                         # Restore the RNG state immediately before the next batch is yielded from the dataloader
@@ -1616,7 +1617,6 @@ class Trainer:
 
                     self.engine.run_event(Event.AFTER_DATALOADER)
 
-                    self.engine.run_event(Event.BATCH_START)
                     self.logger.log_metrics({
                         'trainer/global_step': int(self.state.timestamp.batch),
                         'trainer/batch_idx': self.state.timestamp.batch_in_epoch.value,
