@@ -17,6 +17,7 @@ import sys
 import tempfile
 import warnings
 
+import performance
 import torch
 
 from composer.loggers import LogLevel
@@ -43,6 +44,8 @@ def _main():
 
     if len(sys.argv) == 1:
         sys.argv.append('--help')
+
+    performance.register_all_algorithms()
 
     hparams = TrainerHparams.create(cli_args=True)  # reads cli args from sys.argv
 
