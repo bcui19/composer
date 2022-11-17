@@ -8,6 +8,7 @@ import logging
 import os
 
 import torch
+import torch.distributed as torch_dist
 import torchvision
 from torch.utils.data import DataLoader
 from torchmetrics import MetricCollection
@@ -102,21 +103,28 @@ ADE20K_FILE = 'ADEChallengeData2016.zip'
 
 
 def _main():
+    torch_dist.init_process_group('nccl')
+
     # Divide batch size by number of devices
     if dist.get_world_size() > 1:
         args.train_batch_size = args.train_batch_size // dist.get_world_size()
         args.eval_batch_size = args.eval_batch_size // dist.get_world_size()
 
+    is_first_local_rank = dist.get_global_rank() == 0
+
     # Train dataset code
     logging.info('Building train dataloader')
 
     if args.download:
-        torchvision.datasets.utils.download_and_extract_archive(url=ADE20K_URL,
-                                                                download_root=args.data_dir,
-                                                                filename=ADE20K_FILE,
-                                                                remove_finished=True)
+        if is_first_local_rank:
+            torchvision.datasets.utils.download_and_extract_archive(url=ADE20K_URL,
+                                                                    download_root=args.data_dir,
+                                                                    filename=ADE20K_FILE,
+                                                                    remove_finished=True)
         # Adjust the data_dir to include the extracted directory
         args.data_dir = os.path.join(args.data_dir, 'ADEChallengeData2016')
+
+    dist.barrier()
 
     # Training transforms applied to both the image and target
     train_both_transforms = torch.nn.Sequential(
