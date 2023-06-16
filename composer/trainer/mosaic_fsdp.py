@@ -14,10 +14,10 @@ import torch
 import torch.nn as nn
 from torch import distributed
 from torch.distributed import ProcessGroup
-#from torch.distributed.fsdp import (BackwardPrefetch, CPUOffload, FullyShardedDataParallel, MixedPrecision,
+from torch.distributed.fsdp import (BackwardPrefetch, CPUOffload, FullyShardedDataParallel, MixedPrecision,
                                     ShardingStrategy)
 #from torch.distributed.fsdp._utils import _contains_batchnorm, _override_batchnorm_mixed_precision
-from torch.distributed.fsdp.wrap import _or_policy, _wrap, _wrap_batchnorm_individually
+#from torch.distributed.fsdp.wrap import _or_policy, _wrap, _wrap_batchnorm_individually
 
 from composer.core import Precision
 from composer.utils import dist
