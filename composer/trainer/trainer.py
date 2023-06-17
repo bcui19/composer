@@ -1916,8 +1916,8 @@ class Trainer:
 
         use_grad_scaling = self._use_grad_scaling(self.state.precision, self.state.scaler)
 
-        if self.spin_dataloaders:
-            self._spin_dataloaders_to_cur_epoch()
+        #if self.spin_dataloaders:
+        #    self._spin_dataloaders_to_cur_epoch()
 
         if self.state.timestamp.batch_in_epoch == 0 and self._rng_state is not None:
             # only restore the rng state here if the step in the current epoch is zero.
@@ -1940,13 +1940,13 @@ class Trainer:
 
                 for batch_idx, self.state.batch in enumerate(self._iter_dataloader(TrainerMode.TRAIN)):
                     # Spin dataloader forward unless dataloader handles internally with dataset_resumption
-                    if self.spin_dataloaders and 'train' not in self.state.dataset_resumption and batch_idx < int(
-                            self.state.timestamp.batch_in_epoch):
-                        # Restore the RNG state immediately before the next batch is yielded from the dataloader
-                        if batch_idx + 1 == int(self.state.timestamp.batch_in_epoch) and self._rng_state is not None:
-                            reproducibility.load_rng_state(self._rng_state)
-                            self._rng_state = None
-                        continue
+                    #if self.spin_dataloaders and 'train' not in self.state.dataset_resumption and batch_idx < int(
+                    #        self.state.timestamp.batch_in_epoch):
+                    #    # Restore the RNG state immediately before the next batch is yielded from the dataloader
+                    #    if batch_idx + 1 == int(self.state.timestamp.batch_in_epoch) and self._rng_state is not None:
+                    #        reproducibility.load_rng_state(self._rng_state)
+                    #        self._rng_state = None
+                    #    continue
 
                     self.state.batch = self.state.device.batch_to_device(self.state.batch)
                     self.state.batch = self._train_data_spec.device_transforms(self.state.batch)
