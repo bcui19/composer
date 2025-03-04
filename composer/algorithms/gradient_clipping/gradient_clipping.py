@@ -46,6 +46,7 @@ def apply_gradient_clipping(
         for module in model.modules():
             if isinstance(module, FullyShardedDataParallel) and module.check_is_root():
                 if clipping_type == 'norm':
+                    print ("trying to clip gradients of module: ", module)
                     module.clip_grad_norm_(max_norm=clipping_threshold)
                 elif clipping_type == 'value':
                     module.clip_grad_norm_(max_norm=clipping_threshold, norm_type=float('inf'))
