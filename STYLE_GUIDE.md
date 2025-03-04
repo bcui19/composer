@@ -29,7 +29,7 @@ Composer uses the [yapf](https://github.com/google/yapf) formatter for general f
 (see section 2.2). These checks can also be run manually via:
 
 ```
-pre-commit run yapf --all-files  # for yahp
+pre-commit run yapf --all-files  # for yapf
 pre-commit run isort --all-files  # for isort
 ```
 
@@ -53,8 +53,8 @@ As a general rule of thumb,
     ```python
     from typing import Optional
 
-    def configure_deepspeed(deepspeed_config: Optional[dict]):
-        if deepspeed_config is None:
+    def configure_parallelism(parallelism_config: Optional[dict]):
+        if parallelism_config is None:
             # Don't do this check in the callee, which results in a no-op
             return
         ...
@@ -67,13 +67,13 @@ As a general rule of thumb,
     ```python
     from typing import Optional
 
-    def configure_deepspeed(deepspeed_config: dict):
+    def configure_parallelism(parallelism_config: dict):
         ...
 
-    def trainer(deepspeed_config: Optional[dict]):
-        if deepspeed_config is not None:
+    def trainer(paralellism_config: Optional[dict]):
+        if paralellism_config is not None:
             # Do this check in the caller function
-            configure_deepspeed(deepspeed_config)
+            configure_paralellism(paralellism_config)
         ...
     ```
 
@@ -188,10 +188,10 @@ The following rules apply to public APIs:
 
     ```python
     from torch import Tensor
-    from typing import Optional, Sequence, Tuple, Union
+    from typing import Optional, Sequence, Union
     from composer.utils import ensure_tuple
 
-    def foo(x: Optional[Union[Tensor, Sequence[Tensor]]]) -> Tuple[Tensor, ...]:
+    def foo(x: Optional[Union[Tensor, Sequence[Tensor]]]) -> tuple[Tensor, ...]:
         return ensure_tuple(x)  # ensures that the result is always a (potentially empty) tuple of tensors
     ```
 
@@ -227,22 +227,23 @@ All imports in composer should be absolute -- that is, they do not begin with a 
 1.  If a dependency is not core to Composer (e.g. it is for a model, dataset, algorithm, or some callbacks):
     1.  It must be specified in a entry of the `extra_deps` dictionary of [setup.py](setup.py).
         This dictionary groups dependencies that can be conditionally installed. An entry named `foo`
-        can be installed with `pip install 'mosaicml[foo]'`. For example, running `pip install 'mosaicml[unet]'`
-        will install everything in `install_requires`, along with `monai` and `scikit-learn`.
+        can be installed with `pip install 'mosaicml[foo]'`. For example, running `pip install 'mosaicml[system_metrics_monitor]'`
+        will install everything in `install_requires`, along with `pynvml`.
     1.  It must also be specified in the `run_constrained` and the `test.requires` section.
     1.  The import must be conditionally imported in the code. For example:
 
         <!--pytest-codeblocks:importorskip(monai)-->
         <!--pytest-codeblocks:importorskip(scikit-learn)-->
         ```python
+        from composer import Callback
         from composer.utils import MissingConditionalImportError
 
-        def unet():
+        class SystemMetricsMonitor(Callback)
             try:
-                import monai
+                import pynvml
             except ImportError as e:
-                raise MissingConditionalImportError(extra_deps_group="unet",
-                                                    conda_package="monai",
+                raise MissingConditionalImportError(extra_deps_group="system_metrics_monitor",
+                                                    conda_package="pynvml",
                                                     conda_channel="conda-forge",) from e
         ```
 
@@ -250,20 +251,7 @@ All imports in composer should be absolute -- that is, they do not begin with a 
         an optional dependency is missing.
 
         If the corresponding package is not published on Anaconda, then set the ``conda_package`` to the pip package
-        name, and set ``conda_channel`` to ``None``. For example, with DeepSpeed:
-
-        <!--pytest-codeblocks:importorskip(deepspeed)-->
-        ```python
-        from composer.utils import MissingConditionalImportError
-
-        try:
-            import deepspeed
-        except ImportError as e:
-            raise MissingConditionalImportError(extra_deps_group="deepspeed",
-                                                conda_package="deepspeed>=0.5.5",
-                                                conda_channel=None) from e
-        ```
-
+        name, and set ``conda_channel`` to ``None``.
 
 
     1.  If the dependency is core to Composer, add the dependency to the `install_requires` section of
@@ -280,7 +268,7 @@ For example, from [composer/callbacks/memory_monitor.py](composer/callbacks/memo
 ```python
 """Log memory usage during training."""
 import logging
-from typing import Dict, Union
+from typing import Union
 
 import torch.cuda
 
@@ -338,7 +326,7 @@ The following guidelines apply to documentation.
     specify "optional", and the docstring should say the default value. Some examples:
 
     ```python
-    from typing import Optional, Tuple, Union
+    from typing import Optional, Union
 
     def foo(bar: int):
         """Foo.
@@ -383,7 +371,7 @@ The following guidelines apply to documentation.
         """
         ...
 
-    def foo6(bar: int) -> Tuple[int, str]:
+    def foo6(bar: int) -> tuple[int, str]:
         """Foo6.
 
         Args:

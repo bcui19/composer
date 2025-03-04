@@ -8,7 +8,7 @@
 Factorize splits a large linear or convolutional layer into two smaller ones that compute a similar function.
 This can be applied to models for both computer vision and natural language processing.
 
-| ![Factorize](https://storage.googleapis.com/docs.mosaicml.com/images/methods/factorize-no-caption.png) |
+| ![Factorize](../_images/factorize-no-caption.png) |
 |:--:
 |*Figure 1 of [Zhang et al. (2015)](https://ieeexplore.ieee.org/abstract/document/7332968). (a) The weights `W` of a 2D convolutional layer with `k x k` filters, `c` input channels, and `d` output channels are factorized into two smaller convolutions (b) with weights `W'` and `P` with `d'` intermediate channels. The first convolution uses the original filter size but produces only `d'` channels. The second convolution has `1 x 1` filters and produces the original `d` output channels but has only `d'` input channels. This changes the complexity per spatial position from $O(k^2cd)$ to $O(k^2cd') + O(d'd)$.*|
 
@@ -53,7 +53,6 @@ def training_loop(model, train_loader):
 
 ### Composer Trainer
 
-<!--pytest.mark.gpu-->
 <!--
 ```python
 from torch.utils.data import DataLoader
@@ -118,7 +117,8 @@ We hope to allow factorization during training in the future.
 This might allow more intelligent allocation of factorization to different layers based on how well they can be approximated.
 To work around this limitation, one can save the model, stop training, load and alter the model, and then restart training.
 
-Factorize can be applied to any model with linear or convolutional layers but is most likely to be useful for large models with many channels or large hidden layer sizes.
+Factorize can be applied to any model with linear or convolutional layers but is most likely to be useful for large models with many channels or large hidden layer sizes. However, factorization may not work with your model if it makes special assumptions about linear layers and their attributes. For example, factorization will not work with `torch.nn.MultiHeadAttention` modules, because MultiHeadAttention expects its `linear` submodule to have a `weight` attribute, and `FactorizedLinear` does not have this attribute.
+
 At present, only factorizing `linear` and `conv2d` modules is supported (i.e., factorizing `conv1d` and `conv3d` modules is not supported).
 
 > ❗ Only Linear and 2D Convolution Modules are Supported

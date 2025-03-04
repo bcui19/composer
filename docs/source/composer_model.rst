@@ -9,8 +9,8 @@ to easily speed up training.
 Using your own Model
 --------------------
 
-To create a trainable torchvision ResNet-18 classifier with cross-entropy loss,
-define the |forward| and |loss| methods.
+To create your own model, define the |forward| and |loss| methods. Here is
+an example with a trainable torchvision ResNet-18 classifier with cross-entropy loss.
 
 Notice how the forward pass is still under user control (no magic here!)
 and encapsulated together clearly within the architecture.
@@ -75,8 +75,6 @@ We also provide several common classes for various tasks, specifically:
 
 -  :class:`.ComposerClassifier` - classification tasks with a cross entropy
    loss and accuracy metric.
--  :func:`.composer_timm` - creates classification models from the popular `TIMM`_
-   library.
 -  :class:`.HuggingFaceModel` - :class:`.ComposerModel` wrapper for a 🤗 `Transformers`_ model.
 
 .. note::
@@ -100,10 +98,10 @@ To compute metrics during training, implement the following methods:
 
 .. code:: python
 
-   def eval_forward (self, batch, outputs) -> outputs:
+   def eval_forward(self, batch, outputs) -> outputs:
        ...
 
-   def get_metrics(self, is_train=False) -> Dict[str, Metric]:
+   def get_metrics(self, is_train=False) -> dict[str, Metric]:
        ...
 
    def update_metric(self, batch, outputs, metric) -> None:
@@ -134,8 +132,8 @@ A full example of a validation implementation would be:
         def __init__(self):
             super().__init__()
             self.model = torchvision.models.resnet18()
-            self.train_accuracy = torchmetrics.Accuracy()
-            self.val_accuracy = torchmetrics.Accuracy()
+            self.train_accuracy = torchmetrics.classification.MulticlassAccuracy(num_classes=1000, average='micro')
+            self.val_accuracy = torchmetrics.classification.MulticlassAccuracy(num_classes=1000, average='micro')
 
         ...
 
@@ -152,7 +150,7 @@ A full example of a validation implementation would be:
 
         def get_metrics(self, is_train=False):
             # defines which metrics to use in each phase of training
-            return {'Accuracy': self.train_accuracy} if train else {'Accuracy': self.val_accuracy}
+            return {'MulticlassAccuracy': self.train_accuracy} if is_train else {'MulticlassAccuracy': self.val_accuracy}
 
 .. note::
 
@@ -195,18 +193,6 @@ Integrations
 ------------
 
 
-
-TIMM
-~~~~
-
-Integrate with your favorite `TIMM`_ models with our :func:`.composer_timm` function.
-
-.. code:: python
-
-    from composer.models import composer_timm
-
-    timm_model = composer_timm(model_name='resnet50', pretrained=True)
-
 BERT Example with 🤗 Transformers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -216,7 +202,7 @@ and make it compatible with our trainer.
 .. code:: python
 
     from transformers import AutoModelForSequenceClassification
-    from torchmetrics import Accuracy
+    from torchmetrics.classification import MulticlassAccuracy
     from torchmetrics.collections import MetricCollection
 
     from composer.models import HuggingFaceModel
@@ -224,11 +210,11 @@ and make it compatible with our trainer.
 
     # huggingface model
     model = AutoModelForSequenceClassification.from_pretrained(
-                            'bert-base-uncased',
+                            'google-bert/bert-base-uncased',
                              num_labels=2)
 
     # list of torchmetrics
-    metrics = [LanguageCrossEntropy(vocab_size=30522), Accuracy()]
+    metrics = [LanguageCrossEntropy(), MulticlassAccuracy(num_classes=2, average='micro')]
 
     # composer model, ready to be passed to our trainer
     composer_model = HuggingFaceModel(model, metrics=metrics)
@@ -265,5 +251,4 @@ and make it compatible with our trainer.
 .. |loss| replace:: :meth:`~.ComposerModel.loss`
 .. _MMDetection: https://mmdetection.readthedocs.io/en/latest/
 .. _Transformers: https://huggingface.co/docs/transformers/index
-.. _TIMM: https://fastai.github.io/timmdocs/
 .. _torchvision: https://pytorch.org/vision/stable/models.html

@@ -1,6 +1,6 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
-from typing import Callable, Iterable, Type, TypeVar, cast
+from typing import Callable, Iterable, TypeVar, cast
 
 import torch
 import torchvision.transforms.functional
@@ -10,7 +10,7 @@ _InputImgT = TypeVar('_InputImgT', torch.Tensor, PillowImage)
 _OutputImgT = TypeVar('_OutputImgT', torch.Tensor, PillowImage)
 
 
-def image_as_type(image: _InputImgT, typ: Type[_OutputImgT]) -> _OutputImgT:
+def image_as_type(image: _InputImgT, typ: type[_OutputImgT]) -> _OutputImgT:
     """Converts between :class:`torch.Tensor` and :class:`PIL.Image.Image` image representations.
 
     Args:
@@ -43,7 +43,7 @@ def image_as_type(image: _InputImgT, typ: Type[_OutputImgT]) -> _OutputImgT:
         raise TypeError(f'Only typ={{torch.Tensor, Image}} is supported; got {typ}')
 
     if typ is torch.Tensor:
-        return cast(_OutputImgT, torchvision.transforms.functional.to_tensor(image))  # PIL -> Tensor
+        return cast(_OutputImgT, torchvision.transforms.functional.to_tensor(image))  # type: ignore PIL -> Tensor
     return cast(_OutputImgT, torchvision.transforms.functional.to_pil_image(image))  # Tensor -> PIL
 
 

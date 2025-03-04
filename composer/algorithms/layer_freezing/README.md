@@ -8,7 +8,7 @@
 Layer Freezing gradually makes early modules untrainable ("freezing" them), saving the cost of backpropagating to and updating frozen modules.
 The hypothesis behind Layer Freezing is that early layers may learn their features sooner than later layers, meaning they do not need to be updated later in training.
 
-<!--| ![LayerFreezing](https://storage.googleapis.com/docs.mosaicml.com/images/methods/layer-freezing.png) |
+<!--| ![LayerFreezing](../_images/layer-freezing.png) |
 |:--:
 |*Need a picture.*|-->
 
@@ -37,7 +37,7 @@ def training_loop(model, train_loader):
             opt.zero_grad()
 
         # Applying layer freezing at the end of the epoch
-        freeze_depth, feeze_level = freeze_layers(
+        freeze_depth, freeze_level = freeze_layers(
                                         model=model,
                                         optimizers=opt,
                                         current_duration=epoch/num_epochs,
@@ -48,7 +48,6 @@ def training_loop(model, train_loader):
 
 ### Composer Trainer
 
-<!--pytest.mark.gpu-->
 <!--
 ```python
 from torch.utils.data import DataLoader

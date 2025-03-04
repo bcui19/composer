@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import MethodType
-from typing import Tuple
 
 import torch
 from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Model
 
-from composer.algorithms.alibi.attention_surgery_functions.utils import (policy_registry, register_alibi,
-                                                                         zero_and_freeze_expand_position_embeddings)
+from composer.algorithms.alibi.attention_surgery_functions.utils import (
+    policy_registry,
+    register_alibi,
+    zero_and_freeze_expand_position_embeddings,
+)
 
 
 @policy_registry.register(GPT2Model)
@@ -31,14 +33,15 @@ def gpt2_attention_converter(module: torch.nn.Module, module_index: int, max_seq
         module=module,
         n_heads=int(module.num_heads),  #type: ignore num_heads member of GPT2Attention
         max_token_length=max_sequence_length,
-        causal=True)
+        causal=True,
+    )
     setattr(module, '_attn', MethodType(_attn, module))
 
     module = enlarge_mask(module, max_sequence_length)
     return module
 
 
-def _attn(self, query, key, value, attention_mask=None, head_mask=None) -> Tuple[torch.Tensor, torch.Tensor]:
+def _attn(self, query, key, value, attention_mask=None, head_mask=None) -> tuple[torch.Tensor, torch.Tensor]:
     """Replication of identically-named attention function function ("_attn") in Composer/HuggingFace GPT2 model's
     GPT2Attention (:func:`transformers.models.gpt2.modeling_gpt2.GPT2Attention._attn`; `GitHub link <https://\\
     github.com/huggingface/transformers/blob/2e11a043374a6229ec129a4765ee4ba7517832b9/src/transformers/models/\\
@@ -88,10 +91,13 @@ def enlarge_mask(module: torch.nn.Module, max_sequence_length: int) -> torch.nn.
     This is necessary for evaluating on sequence lengths longer than the model was initialized to accommodate.
     """
     old_mask = module.bias
+    assert isinstance(old_mask.device, (torch.device, str, int))  # Asserting DeviceLikeType
     new_mask = torch.tril(
         torch.ones(
             (max_sequence_length, max_sequence_length),  # type: ignore
             dtype=torch.uint8,
-            device=old_mask.device)).view(1, 1, max_sequence_length, max_sequence_length)  # type: ignore
+            device=old_mask.device,
+        ),
+    ).view(1, 1, max_sequence_length, max_sequence_length)  # type: ignore
     setattr(module, 'bias', new_mask)
     return module

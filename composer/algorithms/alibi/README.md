@@ -6,7 +6,7 @@
 
 ALiBi (Attention with Linear Biases) dispenses with position embeddings for tokens in transformer-based NLP models, instead encoding position information by biasing the query-key attention scores proportionally to each token pair’s distance. ALiBi yields excellent extrapolation to unseen sequence lengths compared to other position embedding schemes. We leverage this extrapolation capability by training with shorter sequence lengths, which reduces the memory and computation load.
 
-| ![Alibi](https://storage.googleapis.com/docs.mosaicml.com/images/methods/alibi.png) |
+| ![Alibi](../_images/alibi.png) |
 |:--:
 |*The matrix on the left depicts the attention score for each key-query token pair. The matrix on the right depicts the distance between each query-key token pair. m is a head-specific scalar that is fixed during training. Figure from [Press et al., 2021](https://openreview.net/forum?id=R8sQPpGCv0).*|
 
@@ -45,11 +45,11 @@ def training_loop(model, train_loader):
 <!--pytest.mark.gpu-->
 <!--
 ```python
-from tests.fixtures.synthetic_hf_state import make_dataset_configs, synthetic_hf_state_maker
+from tests.common.models import configure_tiny_gpt2_hf_model
+from tests.common.datasets import dummy_gpt_lm_dataloader
 
-synthetic_config = make_dataset_configs(model_family=['gpt2'])[0]
-_, model, train_dataloader = synthetic_hf_state_maker(synthetic_config)
-_, _, eval_dataloader = synthetic_hf_state_maker(synthetic_config)
+model = configure_tiny_gpt2_hf_model()
+train_dataloader, eval_dataloader = dummy_gpt_lm_dataloader(), dummy_gpt_lm_dataloader()
 ```
 -->
 <!--pytest-codeblocks:cont-->

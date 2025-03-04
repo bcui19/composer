@@ -1,34 +1,30 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
 
-import logging
 import os
-import pathlib
-from typing import List, Optional
+from typing import Optional
 
 import pytest
-import tqdm.std
 
-import composer
-from composer.utils import dist, reproducibility
+from composer.utils import reproducibility
 
 # Allowed options for pytest.mark.world_size()
 # Important: when updating this list, make sure to also up ./.ci/test.sh
 # (so tests of all world sizes will be executed) and tests/README.md
 # (so the documentation is correct)
-WORLD_SIZE_OPTIONS = (1, 2)
+WORLD_SIZE_OPTIONS = (1, 2, 4)
 
 # Enforce deterministic mode before any tests start.
 reproducibility.configure_deterministic_mode()
 
 # Add the path of any pytest fixture files you want to make global
 pytest_plugins = [
-    'tests.fixtures.new_fixtures',
-    'tests.fixtures.synthetic_hf_state',
+    'tests.fixtures.autouse_fixtures',
+    'tests.fixtures.fixtures',
 ]
 
 
-def _add_option(parser: pytest.Parser, name: str, help: str, choices: Optional[List[str]] = None):
+def _add_option(parser: pytest.Parser, name: str, help: str, choices: Optional[list[str]] = None):
     parser.addoption(
         f'--{name}',
         default=None,
@@ -44,7 +40,7 @@ def _add_option(parser: pytest.Parser, name: str, help: str, choices: Optional[L
     )
 
 
-def _get_option(config: pytest.Config, name: str, default: Optional[str] = None) -> str:
+def _get_option(config: pytest.Config, name: str, default: Optional[str] = None) -> str:  # type: ignore
     val = config.getoption(name)
     if val is not None:
         assert isinstance(val, str)
@@ -61,13 +57,13 @@ def _get_option(config: pytest.Config, name: str, default: Optional[str] = None)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    _add_option(parser,
-                'seed',
-                help="""\
+    _add_option(
+        parser,
+        'seed',
+        help="""\
         Rank zero seed to use. `reproducibility.seed_all(seed + dist.get_global_rank())` will be invoked
-        before each test.""")
-    _add_option(parser, 'sftp_uri', help='SFTP URI for integration tests.')
-    _add_option(parser, 's3_bucket', help='S3 Bucket for integration tests')
+        before each test.""",
+    )
 
 
 def _get_world_size(item: pytest.Item):
@@ -76,7 +72,7 @@ def _get_world_size(item: pytest.Item):
     return item.get_closest_marker('world_size', default=_default).args[0]
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item]) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Filter tests by world_size (for multi-GPU tests) and duration (short, long, or all)"""
 
     world_size = int(os.environ.get('WORLD_SIZE', '1'))
@@ -89,7 +85,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item
     remaining = []
     deselected = []
     for item in items:
-        if all([condition(item) for condition in conditions]):
+        if all(condition(item) for condition in conditions):
             remaining.append(item)
         else:
             deselected.append(item)
@@ -99,63 +95,57 @@ def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item
         items[:] = remaining
 
 
-@pytest.fixture(autouse=True)
-def set_loglevels():
-    """Ensures all log levels are set to DEBUG."""
-    logging.basicConfig()
-    logging.getLogger(composer.__name__).setLevel(logging.DEBUG)
+# Note: These methods are an alternative to the tiny_bert fixtures in fixtures.py.
+# Fixtures cannot be used natively as parametrized inputs, which we require when
+# we wish to run a test across multiple models, one of which is a HuggingFace BERT Tiny.
+# As a workaround, we inject objects into the PyTest namespace. Tests should not directly
+# use pytest.{var}, but instead should import and use the helper copy methods configure_{var}
+# (in tests.common.models) so the objects in the PyTest namespace do not change.
+def pytest_configure():
+    try:
+        import transformers
+        del transformers
+        TRANSFORMERS_INSTALLED = True
+    except ImportError:
+        TRANSFORMERS_INSTALLED = False
 
-
-@pytest.fixture
-def rank_zero_seed(pytestconfig: pytest.Config) -> int:
-    """Read the rank_zero_seed from the CLI option."""
-    seed = _get_option(pytestconfig, 'seed', default='0')
-    return int(seed)
-
-
-@pytest.fixture(autouse=True)
-def seed_all(rank_zero_seed: int, monkeypatch: pytest.MonkeyPatch):
-    """Monkeypatch reproducibility get_random_seed to always return the rank zero seed, and set the random seed before
-    each test to the rank local seed."""
-    monkeypatch.setattr(reproducibility, 'get_random_seed', lambda: rank_zero_seed)
-    reproducibility.seed_all(rank_zero_seed + dist.get_global_rank())
-
-
-@pytest.fixture(autouse=True)
-def chdir_to_tmp_path(tmp_path: pathlib.Path):
-    os.chdir(tmp_path)
-
-
-@pytest.fixture(autouse=True, scope='session')
-def disable_tqdm_bars():
-    # Disable tqdm progress bars globally in tests
-    original_tqdm_init = tqdm.std.tqdm.__init__
-
-    def new_tqdm_init(*args, **kwargs):
-        if 'disable' not in kwargs:
-            kwargs['disable'] = True
-        return original_tqdm_init(*args, **kwargs)
-
-    # Not using pytest monkeypatch as it is a function-scoped fixture
-    tqdm.std.tqdm.__init__ = new_tqdm_init
+    if TRANSFORMERS_INSTALLED:
+        from tests.fixtures.fixtures import (
+            tiny_bert_config_helper,
+            tiny_bert_model_helper,
+            tiny_bert_tokenizer_helper,
+            tiny_gpt2_config_helper,
+            tiny_gpt2_model_helper,
+            tiny_gpt2_tokenizer_helper,
+            tiny_llama_tokenizer_helper,
+            tiny_mpt_config_helper,
+            tiny_mpt_model_helper,
+            tiny_mpt_tokenizer_helper,
+            tiny_opt_config_helper,
+            tiny_opt_model_helper,
+            tiny_opt_tokenizer_helper,
+            tiny_t5_config_helper,
+            tiny_t5_model_helper,
+            tiny_t5_tokenizer_helper,
+        )
+        pytest.tiny_bert_config = tiny_bert_config_helper()  # type: ignore
+        pytest.tiny_bert_model = tiny_bert_model_helper(pytest.tiny_bert_config)  # type: ignore
+        pytest.tiny_bert_tokenizer = tiny_bert_tokenizer_helper()  # type: ignore
+        pytest.tiny_gpt2_config = tiny_gpt2_config_helper()  # type: ignore
+        pytest.tiny_gpt2_model = tiny_gpt2_model_helper(pytest.tiny_gpt2_config)  # type: ignore
+        pytest.tiny_gpt2_tokenizer = tiny_gpt2_tokenizer_helper()  # type: ignore
+        pytest.tiny_llama_tokenizer = tiny_llama_tokenizer_helper()  # type: ignore
+        pytest.tiny_opt_config = tiny_opt_config_helper()  # type: ignore
+        pytest.tiny_opt_model = tiny_opt_model_helper(pytest.tiny_opt_config)  # type: ignore
+        pytest.tiny_opt_tokenizer = tiny_opt_tokenizer_helper()  # type: ignore
+        pytest.tiny_t5_config = tiny_t5_config_helper()  # type: ignore
+        pytest.tiny_t5_model = tiny_t5_model_helper(pytest.tiny_t5_config)  # type: ignore
+        pytest.tiny_t5_tokenizer = tiny_t5_tokenizer_helper()  # type: ignore
+        pytest.tiny_mpt_config = tiny_mpt_config_helper()  # type: ignore
+        pytest.tiny_mpt_model = tiny_mpt_model_helper(pytest.tiny_mpt_config)  # type: ignore
+        pytest.tiny_mpt_tokenizer = tiny_mpt_tokenizer_helper()  # type: ignore
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int):
     if exitstatus == 5:
         session.exitstatus = 0  # Ignore no-test-ran errors
-
-
-@pytest.fixture
-def sftp_uri(request: pytest.FixtureRequest):
-    if request.node.get_closest_marker('remote') is None:
-        return 'sftp://localhost'
-    else:
-        return _get_option(request.config, 'sftp_uri')
-
-
-@pytest.fixture
-def s3_bucket(request: pytest.FixtureRequest):
-    if request.node.get_closest_marker('remote') is None:
-        return 'my-bucket'
-    else:
-        return _get_option(request.config, 's3_bucket')

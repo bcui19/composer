@@ -55,6 +55,15 @@ git checkout -b cool-new-feature
 
 4\. When you are ready, submit a pull request into the composer repository! If merged, we'll reach out to send you some free swag :)
 
+## Pull request (PR) guidelines
+
+We have some rough guidelines that will make your PR easier to review and more likely to get smoothly merged. Please don't let uncertainty or difficulty with any of these things stop you from opening a PR! We are happy to help you through them :)
+* Self-contained title and description. Please include a concise title and clear PR description. The title should allow someone to understand what the PR changes or does at a glance. The description should allow someone to understand the contents of the PR _without_ looking at the code.
+* If the PR affects output that is displayed to a user of Composer (e.g. console logging or experiment tracker reporting), please include screenshots showing what the new output looks like. UX is important!
+* Include tests. If you are fixing a bug, please add a test that would've caught the bug. If you are adding a new feature, please add unit tests that test the various components of the feature, and also a test that tests the full functionality of the feature.
+* Please consider whether your changes affect the example notebooks or large parts of the code base, and run the daily tests locally if so (`pytest -m 'daily and not remote and not gpu and not vision and not doctest'`)
+* `pre-commit` should help you handle formatting and type checking, but please do make sure you have it installed as described [above](#prerequisites).
+
 ## Configuring README Code Snippets
 
 Composer uses [pytest-codeblocks](https://github.com/nschloe/pytest-codeblocks) to test all example code snippets. The pytest-codeblocks repository explains how to annotate code snippets, which supports most `pytest` configurations. For example, if a test requires model training, the GPU mark (`<!--pytest.mark.skip-->`) should be applied.
@@ -63,9 +72,9 @@ Composer uses [pytest-codeblocks](https://github.com/nschloe/pytest-codeblocks) 
 
 To test your changes locally, run:
 
-1. `make test`  # run CPU tests
-1. `make test-gpu`  # run GPU tests
-1. `cd docs && make doctest`  # run doctests
+* `make test`  # run CPU tests
+* `make test-gpu`  # run GPU tests
+* `cd docs && make doctest`  # run doctests
 
 Some of our checks test distributed training as well. To test these, run:
 
@@ -77,6 +86,30 @@ These tests run with the `composer` launcher. We also support `WORLD_SIZE=1`, wh
 See the [Makefile](/Makefile) for more information.
 
 If you want to run pre-commit hooks manually, which check for code formatting and type annotations, run `pre-commit run --all-files`
+
+### Docker
+To run the tests in the provided docker containers:
+
+* `docker pull mosaicml/composer` (or an alternative image like `mosaicml/composer:latest_cpu`)
+* `docker run --rm -v ./:/composer --user $(id -u):$(id -g) -it mosaicml/composer`
+* from inside the container
+    * `cd /composer`
+    * `pip install -e .`
+    * `pytest <args>` or `make <args>` to run the desired tests
+
+### Checking documentation
+
+If your changes affects the documentation, please get a chance to build the docs locally and view it to verify if the changes
+are what you wanted.
+
+<!--pytest.mark.skip-->
+```bash
+cd docs
+pip install -e '.[docs]'
+make clean && make html
+make host   # open the output link in a browser.
+```
+
 
 ## Code Style & Typing
 

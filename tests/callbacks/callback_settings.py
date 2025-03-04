@@ -1,22 +1,51 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import os
-from typing import Any, Dict, List, Type
+from typing import Any
+from unittest import mock
+from unittest.mock import MagicMock
 
 import pytest
+from torch.utils.data import DataLoader
 
 import composer.callbacks
 import composer.loggers
 import composer.profiler
 from composer import Callback
-from composer.callbacks import EarlyStopper, ImageVisualizer, MemoryMonitor, SpeedMonitor, ThresholdStopper
-from composer.callbacks.export_for_inference import ExportForInferenceCallback
-from composer.callbacks.mlperf import MLPerfCallback
-from composer.loggers import CometMLLogger, RemoteUploaderDownloader, TensorboardLogger, WandBLogger
-from composer.loggers.logger_destination import LoggerDestination
-from composer.loggers.progress_bar_logger import ProgressBarLogger
+from composer.callbacks import (
+    EarlyStopper,
+    ExportForInferenceCallback,
+    FreeOutputs,
+    Generate,
+    ImageVisualizer,
+    MemoryMonitor,
+    MemorySnapshot,
+    MLPerfCallback,
+    OOMObserver,
+    SpeedMonitor,
+    SystemMetricsMonitor,
+    ThresholdStopper,
+)
+from composer.callbacks.load_checkpoint import LoadCheckpoint
+from composer.loggers import (
+    CometMLLogger,
+    ConsoleLogger,
+    LoggerDestination,
+    MLFlowLogger,
+    NeptuneLogger,
+    ProgressBarLogger,
+    RemoteUploaderDownloader,
+    TensorboardLogger,
+    WandBLogger,
+)
+from composer.models.base import ComposerModel
+from composer.utils import dist
+from composer.utils.device import get_device
 from tests.common import get_module_subclasses
+from tests.common.datasets import RandomClassificationDataset, dummy_gpt_lm_dataloader
+from tests.common.models import SimpleModel, configure_tiny_gpt2_hf_model
 
 try:
     import wandb
@@ -51,13 +80,40 @@ except ImportError:
     _MLPERF_INSTALLED = False
 
 try:
+    import mlflow
+    _MLFLOW_INSTALLED = True
+    del mlflow
+except ImportError:
+    _MLFLOW_INSTALLED = False
+
+try:
     import libcloud
     _LIBCLOUD_INSTALLED = True
     del libcloud  # unused
 except ImportError:
     _LIBCLOUD_INSTALLED = False
 
-_callback_kwargs: Dict[Type[Callback], Dict[str, Any],] = {
+try:
+    import pynmvl
+    _PYNMVL_INSTALLED = True
+    del pynmvl  # unused
+except ImportError:
+    _PYNMVL_INSTALLED = False
+
+try:
+    import neptune
+    _NEPTUNE_INSTALLED = True
+    del neptune  # unused
+except ImportError:
+    _NEPTUNE_INSTALLED = False
+
+_callback_kwargs: dict[type[Callback], dict[str, Any]] = {
+    Generate: {
+        'prompts': ['a', 'b', 'c'],
+        'interval': '1ba',
+        'batch_size': 2,
+        'max_new_tokens': 20,
+    },
     RemoteUploaderDownloader: {
         'bucket_uri': 'libcloud://.',
         'backend_kwargs': {
@@ -71,12 +127,12 @@ _callback_kwargs: Dict[Type[Callback], Dict[str, Any],] = {
         'num_concurrent_uploads': 1,
     },
     ThresholdStopper: {
-        'monitor': 'Accuracy',
+        'monitor': 'MulticlassAccuracy',
         'dataloader_label': 'train',
         'threshold': 0.99,
     },
     EarlyStopper: {
-        'monitor': 'Accuracy',
+        'monitor': 'MulticlassAccuracy',
         'dataloader_label': 'train',
     },
     ExportForInferenceCallback: {
@@ -90,18 +146,45 @@ _callback_kwargs: Dict[Type[Callback], Dict[str, Any],] = {
     SpeedMonitor: {
         'window_size': 1,
     },
+    NeptuneLogger: {
+        'mode': 'debug',
+    },
+    WandBLogger: {
+        'init_kwargs': {
+            'mode': 'offline',
+        },
+    },
+    composer.profiler.Profiler: {
+        'trace_handlers': [MagicMock()],
+        'schedule': composer.profiler.cyclic_schedule(),
+    },
+    LoadCheckpoint: {
+        'load_path': 'fake-path',
+    },
 }
 
-_callback_marks: Dict[Type[Callback], List[pytest.MarkDecorator],] = {
+_callback_marks: dict[
+    type[Callback],
+    list[pytest.MarkDecorator],
+] = {
     RemoteUploaderDownloader: [
         pytest.mark.filterwarnings(
             # post_close might not be called if being used outside of the trainer
-            r'ignore:Implicitly cleaning up:ResourceWarning'),
-        pytest.mark.skipif(not _LIBCLOUD_INSTALLED, reason='Libcloud is optional')
+            r'ignore:Implicitly cleaning up:ResourceWarning',
+        ),
+        pytest.mark.skipif(not _LIBCLOUD_INSTALLED, reason='Libcloud is optional'),
     ],
     MemoryMonitor: [
-        pytest.mark.filterwarnings(
-            r'ignore:The memory monitor only works on CUDA devices, but the model is on cpu:UserWarning')
+        pytest.mark.
+        filterwarnings(r'ignore:The memory monitor only works on CUDA devices, but the model is on cpu:UserWarning'),
+    ],
+    MemorySnapshot: [
+        pytest.mark.
+        filterwarnings(r'ignore:The memory snapshot only works on CUDA devices, but the model is on cpu:UserWarning'),
+    ],
+    OOMObserver: [
+        pytest.mark.
+        filterwarnings(r'ignore:The oom observer only works on CUDA devices, but the model is on cpu:UserWarning'),
     ],
     MLPerfCallback: [pytest.mark.skipif(not _MLPERF_INSTALLED, reason='MLPerf is optional')],
     WandBLogger: [
@@ -109,16 +192,31 @@ _callback_marks: Dict[Type[Callback], List[pytest.MarkDecorator],] = {
         pytest.mark.skipif(not _WANDB_INSTALLED, reason='Wandb is optional'),
     ],
     ProgressBarLogger: [
-        pytest.mark.filterwarnings(
-            r'ignore:Specifying the ProgressBarLogger via `loggers` is deprecated:DeprecationWarning')
+        pytest.mark.
+        filterwarnings(r'ignore:Specifying the ProgressBarLogger via `loggers` is not recommended as.*:Warning'),
     ],
-    CometMLLogger: [pytest.mark.skipif(not _COMETML_INSTALLED, reason='comet_ml is optional'),],
-    TensorboardLogger: [pytest.mark.skipif(not _TENSORBOARD_INSTALLED, reason='Tensorboard is optional'),],
+    ConsoleLogger: [
+        pytest.mark.
+        filterwarnings(r'ignore:Specifying the ConsoleLogger via `loggers` is not recommended as.*:Warning'),
+    ],
+    CometMLLogger: [pytest.mark.skipif(not _COMETML_INSTALLED, reason='comet_ml is optional')],
+    TensorboardLogger: [pytest.mark.skipif(not _TENSORBOARD_INSTALLED, reason='Tensorboard is optional')],
     ImageVisualizer: [pytest.mark.skipif(not _WANDB_INSTALLED, reason='Wandb is optional')],
+    MLFlowLogger: [pytest.mark.skipif(not _MLFLOW_INSTALLED, reason='mlflow is optional')],
+    SystemMetricsMonitor: [pytest.mark.skipif(not _PYNMVL_INSTALLED, reason='pynmvl is optional')],
+    NeptuneLogger: [pytest.mark.skipif(not _NEPTUNE_INSTALLED, reason='neptune is optional')],
+}
+
+_callback_patches: dict[type[Callback], Any] = {
+    LoadCheckpoint: mock.patch('composer.callbacks.load_checkpoint.load_checkpoint'),
 }
 
 
-def get_cb_kwargs(impl: Type[Callback]):
+def get_cb_patches(impl: type[Callback]):
+    return _callback_patches.get(impl, contextlib.nullcontext())
+
+
+def get_cb_kwargs(impl: type[Callback]):
     return _callback_kwargs.get(impl, {})
 
 
@@ -173,7 +271,7 @@ def get_cb_hparams_and_marks():
         from tests.callbacks.callback_settings import get_cb_hparams_and_marks, get_cb_kwargs
 
         @pytest.mark.parametrize("constructor",get_cb_hparams_and_marks())
-        def test_something(constructor: Callable, yaml_dict: Dict[str, Any]):
+        def test_something(constructor: Callable, yaml_dict: dict[str, Any]):
             yaml_dict = get_cb_kwargs(constructor)
             construct_from_yaml(constructor, yaml_dict=yaml_dict)
     """
@@ -181,3 +279,28 @@ def get_cb_hparams_and_marks():
     implementations = []
     ans = [_to_pytest_param(impl) for impl in implementations]
     return ans
+
+
+def get_cb_model_and_datasets(
+    cb: Callback,
+    dl_size=100,
+    **default_dl_kwargs,
+) -> tuple[ComposerModel, DataLoader, DataLoader]:
+    if isinstance(cb, Generate):
+        if get_device(None).name == 'cpu' and dist.get_world_size() > 1:
+            pytest.xfail(
+                'GPT2 is not currently supported with DDP. See https://github.com/huggingface/transformers/issues/22482 for more details.',
+            )
+        return (
+            configure_tiny_gpt2_hf_model(),
+            dummy_gpt_lm_dataloader(size=dl_size),
+            dummy_gpt_lm_dataloader(size=dl_size),
+        )
+    model = SimpleModel()
+    if isinstance(cb, FreeOutputs):
+        model.get_metrics = lambda is_train=False: {}
+    return (
+        model,
+        DataLoader(RandomClassificationDataset(size=dl_size), **default_dl_kwargs),
+        DataLoader(RandomClassificationDataset(size=dl_size), **default_dl_kwargs),
+    )

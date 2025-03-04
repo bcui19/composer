@@ -2,19 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """A collection of common torchmetrics for NLP tasks."""
+
+import logging
 from typing import Mapping, Union
 
 import torch
 from torch import Tensor
 from torchmetrics import Metric
 
-from composer.loss import soft_cross_entropy
+log = logging.getLogger(__name__)
 
-__all__ = ['Perplexity', 'BinaryF1Score', 'HFCrossEntropy', 'LanguageCrossEntropy', 'MaskedAccuracy']
+__all__ = [
+    'BinaryF1Score',
+    'LanguageCrossEntropy',
+    'MaskedAccuracy',
+    'LanguagePerplexity',
+]
 
 
 class MaskedAccuracy(Metric):
-    """Computes accuracy with support for masked indicies.
+    """Computes accuracy with support for masked indices.
 
     Adds metric state variables:
         correct (float): The number of instances where the prediction masked the target.
@@ -38,15 +45,17 @@ class MaskedAccuracy(Metric):
         self.add_state('total', default=torch.tensor(0), dist_reduce_fx='sum')
 
     def update(self, preds: torch.Tensor, target: torch.Tensor):
-        # predictions is a batch x num_classes tensor, take the argmax to get class indicies
+        # predictions is a batch x num_classes tensor, take the argmax to get class indices
         preds = torch.argmax(preds, dim=-1)
         assert preds.shape == target.shape
 
-        # mask out the padded indicies
+        # mask out the padded indices
         mask = (target != self.ignore_index)
         masked_target = target[mask]
         masked_preds = preds[mask]
 
+        assert isinstance(self.correct, Tensor)
+        assert isinstance(self.total, Tensor)
         self.correct += torch.sum(masked_preds == masked_target)
         self.total += mask.sum()
 
@@ -64,7 +73,6 @@ class LanguageCrossEntropy(Metric):
         total_items (float): The number of batches to average across.
 
     Args:
-        vocab_size (int): The size of the tokenizer vocabulary.
         dist_sync_on_step (bool, optional): Synchronize metric state across processes at
             each forward() before returning the value at the step. Default: ``False``.
         ignore_index (int, optional): The class index to ignore. Default: ``-100``.
@@ -73,10 +81,9 @@ class LanguageCrossEntropy(Metric):
     # Make torchmetrics call update only once
     full_state_update = False
 
-    def __init__(self, vocab_size: int, dist_sync_on_step=False, ignore_index: int = -100):
+    def __init__(self, dist_sync_on_step: bool = False, ignore_index: int = -100):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
-        self.vocab_size = vocab_size
         self.ignore_index = ignore_index
         self.loss_fn = torch.nn.CrossEntropyLoss(ignore_index=ignore_index, reduction='sum')
         self.add_state('sum_loss', default=torch.tensor(0.), dist_reduce_fx='sum')
@@ -90,15 +97,21 @@ class LanguageCrossEntropy(Metric):
                 either the Tensor or a Mapping type that contains the loss or model logits.
             target (~torch.Tensor): A Tensor of ground-truth values to compare against.
         """
-        assert isinstance(output, Tensor)
-        output = output.view(-1, self.vocab_size)
+        if isinstance(output, Mapping):
+            logits = output['logits']
+        elif isinstance(output, Tensor):
+            logits = output
+        else:
+            raise Exception(f'Type {type(output)} for the output is unsupported.')
+
         target = target.view(-1)
-        losses = self.loss_fn(output, target)
+        logits = logits.view(target.shape[0], -1)
+        losses = self.loss_fn(logits, target)
 
         total_items = (target != self.ignore_index).sum()
         self.total_items += total_items  #type: ignore (third-party)
 
-        # accmulate loss over all batches
+        # accumulate loss over all batches
         self.sum_loss += losses
 
     def compute(self) -> Tensor:
@@ -143,6 +156,10 @@ class BinaryF1Score(Metric):
             target (~torch.Tensor): A Tensor of ground-truth values to compare against.
         """
         predictions = torch.argmax(output, dim=1)
+
+        assert isinstance(self.true_positive, Tensor)
+        assert isinstance(self.false_positive, Tensor)
+        assert isinstance(self.false_negative, Tensor)
         self.true_positive += predictions[(target == 1)].sum()
         self.false_positive += (predictions[(target == 1)] == 0).sum()
         self.false_negative += (predictions[(target == 0)] == 1).sum()
@@ -160,72 +177,34 @@ class BinaryF1Score(Metric):
         return f1
 
 
-class HFCrossEntropy(Metric):
-    """Hugging Face compatible cross entropy loss.
-
-    Adds metric state variables:
-        sum_loss (float): The sum of the per-example loss in the batch.
-        total_batches (float): The number of batches to average across.
-
-    Args:
-        dist_sync_on_step (bool, optional): Synchronize metric state across processes at
-            each forward() before returning the value at the step. Default: ``False``
-    """
-
-    # Make torchmetrics call update only once
-    full_state_update = False
-
-    def __init__(self, dist_sync_on_step=False):
-        super().__init__(dist_sync_on_step=dist_sync_on_step)
-
-        self.add_state('sum_loss', default=torch.tensor(0.), dist_reduce_fx='sum')
-        self.add_state('total_batches', default=torch.tensor(0), dist_reduce_fx='sum')
-
-    def update(self, output: Union[Mapping, Tensor], target: Tensor) -> None:
-        """Updates the internal state with results from a new batch.
-
-        Args:
-            output (Mapping): The output from the model, which must contain
-                either the Tensor or a Mapping type that contains the loss or model logits.
-            target (~torch.Tensor): A Tensor of ground-truth values to compare against.
-        """
-        # if logit modification algorithms aren't on, we take the loss directly from the model output
-        if isinstance(output, Mapping) and 'loss' in output:
-            loss = output['loss']
-        else:
-            if isinstance(output, Mapping):
-                logits = output['logits']
-            # recompute the loss on our own
-            elif isinstance(output, Tensor):
-                logits = output
-            else:
-                raise Exception(f'Type {type(output)} for the output is unsupported.')
-
-            loss = soft_cross_entropy(logits, target)
-
-        # accmulate loss over all batches
-        self.sum_loss += loss
-
-        self.total_batches += 1  #type: ignore (third-party)
+class LanguagePerplexity(LanguageCrossEntropy):
+    """Subclasses :class:`~composer.metrics.nlp.LanguageCrossEntropy` to implement perplexity."""
 
     def compute(self) -> Tensor:
-        """Aggregate the state over all processes to compute the metric.
-
-        Returns:
-            loss: The loss averaged across all batches as a :class:`~torch.Tensor`.
-        """
-        # Return average loss over entire dataset
-        return self.sum_loss / self.total_batches  #type: ignore (third-party)
-
-
-class Perplexity(HFCrossEntropy):
-    """Subclasses :class:`~composer.models.nlp_metrics.HFLanguageCrossEntropyLoss` to implement perplexity.
-
-    If an algorithm modifies the loss function and it is no longer directly provided in the output, then this could be
-    expensive because it'll compute the loss twice.
-    """
-
-    def compute(self) -> Tensor:
-        """Returns torch.exp() of the LanguageCrossEntropyLoss."""
+        """Returns torch.exp() of the LanguageCrossEntropy."""
         avg_loss = super().compute()
         return torch.exp(avg_loss)
+
+
+# For backward compatibility
+class InContextLearningMetric:
+    """InContextLearningMetric only exists for backwards compatibility of checkpoints that contain pickled metrics."""
+
+    def __init__(self):
+        raise RuntimeError(
+            f'This class only exists for maintaining backward compatibility for checkpoints that contain pickled metrics. Please instead use https://github.com/mosaicml/llm-foundry/blob/main/scripts/eval/README.md.',
+        )
+
+    def __getstate__(self):
+        return None
+
+    def __setstate__(self, state):
+        pass
+
+
+InContextLearningCodeEvalAccuracy = InContextLearningMetric
+InContextLearningLMAccuracy = InContextLearningMetric
+InContextLearningLMExpectedCalibrationError = InContextLearningMetric
+InContextLearningMCExpectedCalibrationError = InContextLearningMetric
+InContextLearningQAAccuracy = InContextLearningMetric
+InContextLearningMultipleChoiceAccuracy = InContextLearningMetric

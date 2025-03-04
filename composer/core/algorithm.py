@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from composer.core.serializable import Serializable
 
@@ -47,16 +47,12 @@ class Algorithm(Serializable, ABC):
         For example, it is used to tell :class:`torch.nn.parallel.DistributedDataParallel` (DDP) that some parameters
         will be frozen during training, and hence it should not expect gradients from them. All algorithms which do any
         kind of parameter freezing should override this function to return ``True``.
-
-        .. note::
-
-           DeepSpeed integration with this function returning True is not tested. It may not work as expected.
         """
         return False
 
     @property
     def backwards_create_graph(self) -> bool:
-        """Return ``True`` to indicate this algorithm requires a second derivative to be computed. Defaults to ``False``.
+        """Whether this algorithm requires the backwards pass to be differentiable. Defaults to ``False``.
 
         If it returns ``True``, ``create_graph=True`` will be passed to :meth:`torch.Tensor.backward` which will result in
         the graph of the gradient also being constructed. This allows the computation of second order derivatives.
@@ -68,7 +64,7 @@ class Algorithm(Serializable, ABC):
         """Return `True` to indicate this algorithm is required when loading from a checkpoint which used it."""
         return False
 
-    def state_dict(self) -> Dict[str, Any]:
+    def state_dict(self) -> dict[str, Any]:
         return {'repr': self.__repr__()}
 
     @abstractmethod

@@ -10,7 +10,7 @@ import platform
 import subprocess
 import sys
 import warnings
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Iterable, Optional
 
 import torch
 from torch.utils.data import DataLoader, IterableDataset
@@ -48,8 +48,10 @@ def _local_rank_zero() -> bool:
 
 def _require_mlperf_logging():
     if not mlperf_available:
-        raise ImportError("""Please install with `pip install 'mosaicml[mlperf]'` and also
-                          install the logging library from: https://github.com/mlcommons/logging""")
+        raise ImportError(
+            """Please install with `pip install 'mosaicml[mlperf]'` and also
+                          install the logging library from: https://github.com/mlcommons/logging""",
+        )
 
 
 class MLPerfCallback(Callback):
@@ -82,12 +84,12 @@ class MLPerfCallback(Callback):
             callback = MLPerfCallback(
                 root_folder='/submission',
                 index=0,
-                metric_name='Accuracy',
+                metric_name='MulticlassAccuracy',
                 metric_label='eval',
                 target='0.759',
             )
 
-    During training, the metric found in ``state.eval_metrics[metric_label][metric_name]``
+    During training, the metric found in ``state.eval_metrics[evaluator_label][metric_name]``
     will be compared against the target criterion.
 
     .. note::
@@ -113,9 +115,9 @@ class MLPerfCallback(Callback):
         division (str, optional): Division of submission. Currently only ``open`` division supported.
             Default: ``'open'``.
         metric_name (str, optional): name of the metric to compare against the target.
-            Default: ``Accuracy``.
+            Default: ``MulticlassAccuracy``.
         metric_label (str, optional): The label name. The metric will be accessed via
-            ``state.eval_metrics[metric_label][metric_name]``.
+            ``state.eval_metrics[evaluator_label][metric_name]``.
         submitter (str, optional): Submitting organization. Default: ``"MosaicML"``.
         system_name (str, optional): Name of the system (e.g. 8xA100_composer). If
             not provided, system name will default to ``[world_size]x[device_name]_composer``,
@@ -135,7 +137,7 @@ class MLPerfCallback(Callback):
         benchmark: str = 'resnet',
         target: float = 0.759,
         division: str = 'open',
-        metric_name: str = 'Accuracy',
+        metric_name: str = 'MulticlassAccuracy',
         metric_label: str = 'eval',
         submitter: str = 'MosaicML',
         system_name: Optional[str] = None,
@@ -237,7 +239,7 @@ class MLPerfCallback(Callback):
         os.makedirs(benchmark_folder, exist_ok=True)
         os.makedirs(systems_folder, exist_ok=True)
 
-    def _log_dict(self, data: Dict[str, Any]):
+    def _log_dict(self, data: dict[str, Any]):
         for key, value in data.items():
             self.mllogger.event(key=key, value=value)
 
@@ -263,20 +265,8 @@ class MLPerfCallback(Callback):
             if isinstance(dataloader.dataset, IterableDataset):
                 num_samples *= dist.get_world_size()
             return (dataloader.batch_size, num_samples)
-        try:
-            # attempt to import ffcv and test if its an ffcv loader.
-            import ffcv  # type: ignore
 
-            if isinstance(dataloader, ffcv.loader.Loader):
-                # Use the cached attribute ffcv.init_traversal_order to compute number of samples
-                return (
-                    dataloader.batch_size,  # type: ignore
-                    len(dataloader.next_traversal_order()) * dist.get_world_size()  # type: ignore
-                )
-        except ImportError:
-            pass
-
-        raise TypeError(f'torch dataloader or ffcv dataloader required (and ffcv installed)')
+        raise TypeError(f'torch dataloader required')
 
     def fit_start(self, state: State, logger: Logger) -> None:
         if _global_rank_zero():
@@ -295,7 +285,7 @@ class MLPerfCallback(Callback):
             self._log_dict({
                 constants.SEED: state.seed,
                 constants.GLOBAL_BATCH_SIZE: batch_size * dist.get_world_size(),
-                constants.GRADIENT_ACCUMULATION_STEPS: state.grad_accum,
+                constants.DEVICE_TRAIN_MICROBATCH_SIZE: state.device_train_microbatch_size,
                 constants.TRAIN_SAMPLES: num_samples,
                 constants.EVAL_SAMPLES: eval_num_samples,
             })
@@ -311,11 +301,13 @@ class MLPerfCallback(Callback):
     def epoch_start(self, state: State, logger: Logger) -> None:
         if _global_rank_zero():
             self.mllogger.event(key=constants.EPOCH_START, metadata={'epoch_num': self._get_time(state)})
-            self.mllogger.event(key=constants.BLOCK_START,
-                                metadata={
-                                    'first_epoch_num': self._get_time(state),
-                                    'epoch_count': 1
-                                })
+            self.mllogger.event(
+                key=constants.BLOCK_START,
+                metadata={
+                    'first_epoch_num': self._get_time(state),
+                    'epoch_count': 1,
+                },
+            )
 
     def epoch_end(self, state: State, logger: Logger) -> None:
         if _global_rank_zero():
@@ -331,9 +323,11 @@ class MLPerfCallback(Callback):
 
         if _global_rank_zero():
             self.mllogger.event(key=constants.EVAL_STOP, metadata={'epoch_num': self._get_time(state)})
-            self.mllogger.event(key=constants.EVAL_ACCURACY,
-                                value=accuracy,
-                                metadata={'epoch_num': self._get_time(state)})
+            self.mllogger.event(
+                key=constants.EVAL_ACCURACY,
+                value=accuracy,
+                metadata={'epoch_num': self._get_time(state)},
+            )
             self.mllogger.event(key=constants.BLOCK_STOP, metadata={'first_epoch_num': self._get_time(state)})
 
             if accuracy > self.target and not self.success:
@@ -359,7 +353,7 @@ def get_system_description(
     status: str,
     system_name: Optional[str] = None,
     host_processors_per_node: Optional[int] = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Generates a valid system description.
 
     Makes a best effort to auto-populate some of the fields, but should

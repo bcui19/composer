@@ -24,7 +24,7 @@ import collections
 import itertools
 import logging
 import textwrap
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, OrderedDict, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, OrderedDict, Sequence, Union
 
 import torch
 import torch.distributed
@@ -46,7 +46,7 @@ ReplacementFunction = Callable[[torch.nn.Module, int], Optional[torch.nn.Module]
 
 def _add_children_recursive(
     module: torch.nn.Module,
-    children_to_parents_and_names: OrderedDict[torch.nn.Module, List[Tuple[torch.nn.Module, str]]],
+    children_to_parents_and_names: OrderedDict[torch.nn.Module, list[tuple[torch.nn.Module, str]]],
 ) -> None:
     # recursively build up children_to_parents_and_names so it maps a module to the list of
     # (parent_module, attribute name)
@@ -60,11 +60,11 @@ def _add_children_recursive(
 # adapted from https://github.com/microsoft/DeepSpeed/blob/b8ff4825aae4bced15a29a4298cb3e59098df999/deepspeed/module_inject/replace_module.py#L699
 def replace_module_classes(
     module: torch.nn.Module,
-    policies: Mapping[Type[torch.nn.Module], ReplacementFunction],
+    policies: Mapping[type[torch.nn.Module], ReplacementFunction],
     optimizers: Optional[Union[Optimizer, Sequence[Optimizer]]] = None,
     recurse_on_replacements: bool = False,
-    indices: Optional[Dict[Any, int]] = None,
-) -> Dict[torch.nn.Module, torch.nn.Module]:
+    indices: Optional[dict[Any, int]] = None,
+) -> dict[torch.nn.Module, torch.nn.Module]:
     """Modify model in-place by recursively applying replacement policies.
 
     .. rubric:: Example
@@ -124,7 +124,7 @@ def replace_module_classes(
             be invoked with this new child :class:`~torch.nn.Conv2d` instance. If the replacement policies
             are not conditioned on module properties that change during replacement, infinite recursion is
             possible.
-        indices (Dict[Any, int], optional): A dictionary mapping module types to the number of times
+        indices (dict[Any, int], optional): A dictionary mapping module types to the number of times
             they've occurred so far in the recursive traversal of
             ``module`` and its child modules. The value is provided to replacement functions, so they
             may switch behaviors depending on the number of replacements that occurred for a given module type.
@@ -140,30 +140,24 @@ def replace_module_classes(
             modules. See :func:`update_params_in_optimizer` for more information.
 
     Returns:
-        Dict[torch.nn.Module, torch.nn.Module]:
+        dict[torch.nn.Module, torch.nn.Module]:
             A dictionary of ``{original_module: replacement_module}``
             reflecting the replacements applied to ``module`` and its children.
     """
     if isinstance(module, torch.nn.parallel.DistributedDataParallel):
         raise TypeError(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
                 Surgery is not supported after a module is wrapped with
                 `torch.nn.parallel.DistributedDataParallel` Instead, please preform surgery on the underlying
-                `module.module` and re-wrap the `module.module` with `torch.nn.parallel.DistributedDataParallel`"""))
-    try:
-        import deepspeed
-    except ImportError:
-        pass
-    else:
-        if isinstance(module, deepspeed.DeepSpeedEngine):
-            raise TypeError(
-                textwrap.dedent("""\
-                    Surgery is not supported after a module is wrapped with
-                    `deepspeed.DeepSpeedEngine` Instead, please perform surgery on the underlying module`,
-                    and re-wrap it with `deepspeed.DeepSpeedEngine`"""))
+                `module.module` and re-wrap the `module.module` with `torch.nn.parallel.DistributedDataParallel`""",
+            ),
+        )
+
     replaced_pairs = {}
-    children_to_parents_and_names: OrderedDict[torch.nn.Module, List[Tuple[torch.nn.Module,
-                                                                           str]]] = collections.OrderedDict()
+    children_to_parents_and_names: OrderedDict[torch.nn.Module,
+                                               list[tuple[torch.nn.Module, str]],
+                                              ] = collections.OrderedDict()
     _add_children_recursive(module, children_to_parents_and_names)
     indices = indices if indices is not None else {c: 0 for c in policies}
 
@@ -203,14 +197,19 @@ def replace_module_classes(
                     _add_children_recursive(replacement, children_to_parents_and_names)
     if optimizers:
         for old_module, new_module in replaced_pairs.items():
-            update_params_in_optimizer(old_params=old_module.parameters(),
-                                       new_params=new_module.parameters(),
-                                       optimizers=optimizers)
+            update_params_in_optimizer(
+                old_params=old_module.parameters(),
+                new_params=new_module.parameters(),
+                optimizers=optimizers,
+            )
     elif len(replaced_pairs) > 0:
         log.info(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             optimizers was not provided. Be sure to either create the optimizer after
-            invoking this method, or manually add new parameters to the existing optimizer."""))
+            invoking this method, or manually add new parameters to the existing optimizer.""",
+            ),
+        )
 
     return replaced_pairs
 
@@ -225,8 +224,10 @@ def _infer_device(module: torch.nn.Module) -> Optional[torch.device]:
         return p.device
 
 
-def count_module_instances(module: torch.nn.Module, module_class: Union[Type[torch.nn.Module],
-                                                                        Tuple[Type[torch.nn.Module], ...]]) -> int:
+def count_module_instances(
+    module: torch.nn.Module,
+    module_class: Union[type[torch.nn.Module], tuple[type[torch.nn.Module], ...]],
+) -> int:
     """Counts the number of instances of ``module_class`` in ``module``, recursively.
 
     .. rubric:: Example
@@ -246,7 +247,7 @@ def count_module_instances(module: torch.nn.Module, module_class: Union[Type[tor
 
     Args:
         module (torch.nn.Module): The source module.
-        module_class (Type[torch.nn.Module] | Tuple[Type[torch.nn.Module], ...]):
+        module_class (Type[torch.nn.Module] | tuple[Type[torch.nn.Module], ...]):
             The module type (or tuple of module types) to count.
 
     Returns:
@@ -259,7 +260,7 @@ def count_module_instances(module: torch.nn.Module, module_class: Union[Type[tor
 
 def _recur_count_module_instances(
     module: torch.nn.Module,
-    module_class: Union[Type[torch.nn.Module], Tuple[Type[torch.nn.Module], ...]],
+    module_class: Union[type[torch.nn.Module], tuple[type[torch.nn.Module], ...]],
     found_instances: set,
 ):
     """Counts instances of ``module_class`` in ``module``, recursively, using a set to deduplicate.
@@ -306,22 +307,24 @@ def _find_param_in_optimizer(param: torch.nn.parameter.Parameter, optimizer: Opt
         or `-1` if ``param`` is not in the ``opt`.
     """
     for i, group in enumerate(optimizer.param_groups):
-        param_list: List[torch.nn.parameter.Parameter] = group['params']
+        param_list: list[torch.nn.parameter.Parameter] = group['params']
         if _tensor_in(param, param_list):
             return i
 
     return -1
 
 
-def _ordered_diff(first: List, second: List) -> List:
+def _ordered_diff(first: list, second: list) -> list:
     """Returns first - second while maintaining the order in first."""
     second_list = set(second)
     return [item for item in first if item not in second_list]
 
 
-def update_params_in_optimizer(old_params: Iterable[torch.nn.parameter.Parameter],
-                               new_params: Iterable[torch.nn.parameter.Parameter],
-                               optimizers: Union[Optimizer, Sequence[Optimizer]]) -> None:
+def update_params_in_optimizer(
+    old_params: Iterable[torch.nn.parameter.Parameter],
+    new_params: Iterable[torch.nn.parameter.Parameter],
+    optimizers: Union[Optimizer, Sequence[Optimizer]],
+) -> None:
     r"""Remove ``old_params`` from the ``optimizers`` and insert ``new_params``.
 
     Newly added parameters will be added to the same :attr:`~torch.optim.Optimizer.param_group` as the removed
@@ -371,7 +374,9 @@ def update_params_in_optimizer(old_params: Iterable[torch.nn.parameter.Parameter
 
     # rip out the removed_params' states from the optimizer
     for p in removed_params:
-        if _tensor_in(p, opt.state):  # only true after training starts
+        # Only true after training starts
+        # Note: it appears that opt.state is a dict whose keys _might_ be tensors
+        if _tensor_in(p, opt.state):  # type: ignore
             opt.state.pop(p)
 
     if len(opt.param_groups) == 1:
@@ -390,9 +395,12 @@ def update_params_in_optimizer(old_params: Iterable[torch.nn.parameter.Parameter
 
         if min(old_group_idxs) != max(old_group_idxs) and len(added_params):
             raise RuntimeError(
-                textwrap.dedent("""\
+                textwrap.dedent(
+                    """\
                     Not all removed parameters are in the same parameter group.
-                    This makes it unclear where to add the new parameters."""))
+                    This makes it unclear where to add the new parameters.""",
+                ),
+            )
         group_idx = old_group_idxs[0]
 
     param_group = opt.param_groups[group_idx]

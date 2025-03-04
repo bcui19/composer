@@ -9,11 +9,12 @@ import os
 import queue
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, TextIO
+from typing import TYPE_CHECKING, Any, Callable, Optional, TextIO
 
 from composer.loggers.logger import Logger, format_log_data_value
 from composer.loggers.logger_destination import LoggerDestination
 from composer.utils import FORMAT_NAME_WITH_DIST_TABLE, format_name_with_dist
+from composer.utils.import_helpers import MissingConditionalImportError
 
 if TYPE_CHECKING:
     from composer.core import State
@@ -175,7 +176,7 @@ class FileLogger(LoggerDestination):  # noqa: D101
         # Flush any log calls that occurred during INIT or FIT_START
         self._flush_file(logger)
 
-    def log_traces(self, traces: Dict[str, Any]):
+    def log_traces(self, traces: dict[str, Any]):
         if self.should_log_traces:
             for trace_name, trace in traces.items():
                 trace_str = format_log_data_value(trace)
@@ -184,7 +185,26 @@ class FileLogger(LoggerDestination):  # noqa: D101
                     trace_str + '\n',
                 )
 
-    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
+    def log_table(
+        self,
+        columns: list[str],
+        rows: list[list[Any]],
+        name: str = 'Table',
+        step: Optional[int] = None,
+    ) -> None:
+        del step
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise MissingConditionalImportError(
+                extra_deps_group='pandas',
+                conda_package='pandas',
+                conda_channel='conda-forge',
+            ) from e
+        table = pd.DataFrame.from_records(columns=columns, data=rows).to_json(orient='split', index=False)
+        self.write('[table]: ', f'{name}: {table}\n')
+
+    def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None) -> None:
         for metric_name, metric in metrics.items():
             metric_str = format_log_data_value(metric)
             self.write(
@@ -192,7 +212,7 @@ class FileLogger(LoggerDestination):  # noqa: D101
                 f'{metric_name}: {metric_str} \n',
             )
 
-    def log_hyperparameters(self, hyperparameters: Dict[str, Any]):
+    def log_hyperparameters(self, hyperparameters: dict[str, Any]):
         for hparam_name, hparam_value in hyperparameters.items():
             hparam_str = format_log_data_value(hparam_value)
             self.write(

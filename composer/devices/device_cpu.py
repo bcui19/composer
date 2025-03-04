@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, TypeVar
+from typing import TypeVar
 
 import torch
 
@@ -26,6 +26,7 @@ class DeviceCPU(Device):
     """
 
     dist_backend = 'gloo'
+    name = 'cpu'
     _device = torch.device('cpu')
 
     def module_to_device(self, module: T_nnModule) -> T_nnModule:
@@ -33,11 +34,3 @@ class DeviceCPU(Device):
 
     def tensor_to_device(self, tensor: torch.Tensor) -> torch.Tensor:
         return tensor.to(self._device)
-
-    def state_dict(self) -> Dict[str, Any]:
-        # CPU device has no RNG state
-        return {}
-
-    def load_state_dict(self, state: Dict[str, Any]) -> None:
-        if len(state) != 0:
-            raise ValueError('CPU device has no state.')

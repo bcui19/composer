@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+import warnings
+from typing import Any, Optional
 
 import torch
+from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.swa_utils import SWALR, AveragedModel
 
-from composer.core import Algorithm, Event, PyTorchScheduler, State, Time, TimeUnit
+from composer.core import Algorithm, Event, State, Time, TimeUnit
 from composer.loggers import Logger
 
 log = logging.getLogger(__name__)
@@ -106,14 +108,20 @@ class SWA(Algorithm):
             LR scheduler. Set to ``None`` for no annealing. Default: ``None``.
     """
 
-    def __init__(self,
-                 swa_start: str = '0.7dur',
-                 swa_end: str = '0.97dur',
-                 update_interval: str = '1ep',
-                 schedule_swa_lr: bool = False,
-                 anneal_strategy: str = 'linear',
-                 anneal_steps: int = 10,
-                 swa_lr: Optional[float] = None):
+    def __init__(
+        self,
+        swa_start: str = '0.7dur',
+        swa_end: str = '0.97dur',
+        update_interval: str = '1ep',
+        schedule_swa_lr: bool = False,
+        anneal_strategy: str = 'linear',
+        anneal_steps: int = 10,
+        swa_lr: Optional[float] = None,
+    ):
+
+        warnings.warn(
+            'SWA has known issues when resuming from a checkpoint on multiple GPUs, which will cause an error when resuming without `load_weights_only=True`.',
+        )
         self.schedule_swa_lr = schedule_swa_lr
         self.anneal_strategy = anneal_strategy
         self.anneal_steps = anneal_steps
@@ -165,9 +173,11 @@ class SWA(Algorithm):
         if self.swa_start >= self.swa_end:
             raise ValueError('swa_end must be > swa_start.')
         if self.swa_end.unit == TimeUnit.DURATION and self.swa_end == 1:
-            log.warning("'swa_end' = '1dur'. Batch norm statistics of averaged model "
-                        'will not be updated. This will negatively impact accuracy. '
-                        'See the documentation for the `swa_end` parameter for details.')
+            log.warning(
+                "'swa_end' = '1dur'. Batch norm statistics of averaged model "
+                'will not be updated. This will negatively impact accuracy. '
+                'See the documentation for the `swa_end` parameter for details.',
+            )
 
         _assert_valid_duration(self.swa_start)
         _assert_valid_duration(self.swa_end)
@@ -185,7 +195,7 @@ class SWA(Algorithm):
         else:
             raise ValueError('units must be in epoch or duration.')
 
-    def _get_last_lr(self, schedulers: List[PyTorchScheduler]):
+    def _get_last_lr(self, schedulers: list[LRScheduler]):
         """ retrieves the last lr from current schedulers. """
         if len(schedulers) == 0:
             return 1.0
@@ -218,7 +228,7 @@ class SWA(Algorithm):
                 state.optimizers[0],
                 swa_lr=self.swa_lr,
                 anneal_epochs=self.anneal_steps,
-                anneal_strategy=self.anneal_strategy,
+                anneal_strategy=self.anneal_strategy,  # type: ignore
             )
 
         self.swa_model = AveragedModel(state.model, device=torch.device('cpu'))
@@ -252,15 +262,17 @@ class SWA(Algorithm):
             self.swa_completed = True
 
             if state.get_elapsed_duration() == 1:
-                log.warning(('The baseline model was replaced with the SWA model after the end of '
-                             'training. This means that SWA model will not have its batch norm '
-                             'statistics updated. This will negatively impact accuracy. See the '
-                             'documentation for the `swa_end` parameter for details.'))
+                log.warning((
+                    'The baseline model was replaced with the SWA model after the end of '
+                    'training. This means that SWA model will not have its batch norm '
+                    'statistics updated. This will negatively impact accuracy. See the '
+                    'documentation for the `swa_end` parameter for details.'
+                ))
 
             state.model.load_state_dict(self.swa_model.module.state_dict())  # type: ignore
             log.info('Set model to the averaged model')
 
-    def state_dict(self) -> Dict[str, Any]:
+    def state_dict(self) -> dict[str, Any]:
         state_dict = super().state_dict()
 
         # we pop the anneal_func from the SWALR state
@@ -280,7 +292,7 @@ class SWA(Algorithm):
         }
         return state_dict
 
-    def load_state_dict(self, state: Dict[str, Any]) -> None:
+    def load_state_dict(self, state: dict[str, Any]) -> None:
         self.swa_completed = state['swa_completed']
         self.step_counter = state['step_counter']
         self.swa_started = state['swa_started']

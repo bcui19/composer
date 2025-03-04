@@ -4,19 +4,21 @@
 
 Block-wise stochastic depth assigns every residual block a probability of dropping the transformation function, leaving only the skip connection. This regularizes and reduces the amount of computation.
 
-![block_wise_stochastic_depth.png](https://storage.googleapis.com/docs.mosaicml.com/images/methods/block_wise_stochastic_depth.png)
+![block_wise_stochastic_depth.png](../_images/block_wise_stochastic_depth.png)
 
 ## How to Use
 
 ### Functional Interface
 
+<!--Test is very slow so we skip-->
+<!--pytest.mark.skip-->
 <!--pytest.mark.gpu-->
 <!--
 ```python
 from torch.utils.data import DataLoader
-from tests.common import RandomImageDataset
+from tests.common import RandomImageDataset, composer_resnet
 
-train_dataloader = DataLoader(RandomImageDataset(), batch_size=2)
+train_dataloader = DataLoader(RandomImageDataset(size=2), batch_size=2)
 ```
 -->
 <!--pytest-codeblocks:cont-->
@@ -27,7 +29,6 @@ import torch
 import torch.nn.functional as F
 
 import composer.functional as cf
-from composer.models import composer_resnet
 
 # Training
 
@@ -59,14 +60,18 @@ for epoch in range(1):
 
 ### Composer Trainer
 
+<!--Test is very slow so we skip-->
+<!--pytest.mark.skip-->
+<!--Torch 2.3 regression requires filtering cudnn warning-->
+<!--pytest.mark.filterwarnings(r'ignore:.*Plan failed with a cudnnException.*:UserWarning')-->
 <!--pytest.mark.gpu-->
 <!--
 ```python
 from torch.utils.data import DataLoader
-from tests.common import RandomImageDataset
+from tests.common import RandomImageDataset, composer_resnet
 
-train_dataloader = DataLoader(RandomImageDataset(), batch_size=2)
-eval_dataloader = DataLoader(RandomImageDataset(), batch_size=2)
+train_dataloader = DataLoader(RandomImageDataset(size=2), batch_size=2)
+eval_dataloader = DataLoader(RandomImageDataset(size=2), batch_size=2)
 ```
 -->
 <!--pytest-codeblocks:cont-->
@@ -75,7 +80,6 @@ eval_dataloader = DataLoader(RandomImageDataset(), batch_size=2)
 # The trainer will automatically run it at the appropriate point in the training loop
 
 from composer.algorithms import StochasticDepth
-from composer.models import composer_resnet
 from composer.trainer import Trainer
 
 # Train model

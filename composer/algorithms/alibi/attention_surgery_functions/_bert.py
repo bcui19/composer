@@ -1,17 +1,21 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
 
+import copy
 import math
 from types import MethodType
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch import nn
 from transformers.models.bert.modeling_bert import BertEmbeddings, BertSelfAttention
 from transformers.models.roberta.modeling_roberta import RobertaEmbeddings, RobertaSelfAttention
 
-from composer.algorithms.alibi.attention_surgery_functions.utils import (policy_registry, register_alibi,
-                                                                         zero_and_freeze_expand_position_embeddings)
+from composer.algorithms.alibi.attention_surgery_functions.utils import (
+    policy_registry,
+    register_alibi,
+    zero_and_freeze_expand_position_embeddings,
+)
 
 
 @policy_registry.register(BertEmbeddings, RobertaEmbeddings)
@@ -20,13 +24,16 @@ def bert_embedding_converter(module: torch.nn.Module, module_index: int, max_seq
     """
     assert isinstance(module, (BertEmbeddings, RobertaEmbeddings))
     del module_index  # unused
-    zero_and_freeze_expand_position_embeddings(module,
-                                               max_sequence_length,
-                                               position_embedding_attribute='position_embeddings')
+    new_module = copy.deepcopy(module)
+    zero_and_freeze_expand_position_embeddings(
+        new_module,
+        max_sequence_length,
+        position_embedding_attribute='position_embeddings',
+    )
 
-    module_device = next(module.parameters()).device
-    module.register_buffer('position_ids', torch.arange(max_sequence_length).expand((1, -1)).to(module_device))
-    return module
+    module_device = next(new_module.parameters()).device
+    new_module.register_buffer('position_ids', torch.arange(max_sequence_length).expand((1, -1)).to(module_device))
+    return new_module
 
 
 @policy_registry.register(BertSelfAttention, RobertaSelfAttention)
@@ -34,10 +41,12 @@ def bert_attention_converter(module: torch.nn.Module, module_index: int, max_seq
     """Adds ALiBi to Bert-style SelfAttention."""
     assert isinstance(module, (BertSelfAttention, RobertaSelfAttention))
     del module_index  # unused
-    module = register_alibi(module=module,
-                            n_heads=int(module.num_attention_heads),
-                            max_token_length=max_sequence_length,
-                            causal=False)
+    module = register_alibi(
+        module=module,
+        n_heads=int(module.num_attention_heads),
+        max_token_length=max_sequence_length,
+        causal=False,
+    )
     setattr(module, 'forward', MethodType(forward, module))
 
     return module
@@ -52,9 +61,9 @@ def forward(
     head_mask: Optional[torch.FloatTensor] = None,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
     encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+    past_key_value: Optional[tuple[tuple[torch.FloatTensor]]] = None,
     output_attentions: Optional[bool] = False,
-) -> Tuple[torch.Tensor]:
+) -> tuple[torch.Tensor]:
     """Replication of identically-named attention function function ("forward") in Composer/HuggingFace BERT model's
     BERTSelfAttention (:func:`transformers.models.bert.modeling_bert.BERTSelfAttention.forward`), but this function
     implements ALiBi and will be used to replace the default attention function."""
@@ -86,10 +95,10 @@ def forward(
     query_layer = self.transpose_for_scores(mixed_query_layer)
 
     if self.is_decoder:
-        # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+        # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
         # Further calls to cross_attention layer can then reuse all cross-attention
         # key/value_states (first "if" case)
-        # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+        # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
         # all previous decoder key/value_states. Further calls to uni-directional self-attention
         # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
         # if encoder bi-directional self-attention `past_key_value` is always `None`
@@ -99,8 +108,9 @@ def forward(
     attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
 
     if self.position_embedding_type == 'relative_key' or self.position_embedding_type == 'relative_key_query':
-        raise NotImplementedError('ALiBi is not supported for BERT with position_embedding_type: {}'.format(
-            self.position_embedding_type))
+        raise NotImplementedError(
+            'ALiBi is not supported for BERT with position_embedding_type: {}'.format(self.position_embedding_type),
+        )
         #### REMOVES THE FOLLOWING CODE ########
         # seq_length = hidden_states.size()[1]
         # position_ids_l = torch.arange(seq_length, dtype=torch.long, device=hidden_states.device).view(-1, 1)

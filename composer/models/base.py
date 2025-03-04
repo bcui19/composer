@@ -6,8 +6,7 @@ from __future__ import annotations
 
 import abc
 import copy
-import warnings
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union
 
 import torch
 from torch import Tensor
@@ -91,14 +90,14 @@ class ComposerModel(torch.nn.Module, abc.ABC):
         return state
 
     @abc.abstractmethod
-    def forward(self, batch: Batch) -> Union[Tensor, Sequence[Tensor]]:
+    def forward(self, batch: Batch) -> Any:
         """Compute model output given a batch from the dataloader.
 
         Args:
             batch (~composer.core.types.Batch): The output batch from dataloader.
 
         Returns:
-            Tensor | Sequence[Tensor]:
+            Any:
                 The result that is passed to :meth:`loss` as the parameter :attr:`outputs`.
 
         .. warning:: This method is different from vanilla PyTorch ``model.forward(x)`` or ``model(x)`` as it takes a
@@ -160,48 +159,6 @@ class ComposerModel(torch.nn.Module, abc.ABC):
         """
         pass
 
-    def metrics(self, train: bool = False) -> Dict[str, Metric]:
-        """Get metrics for evaluating the model. Metrics should be instances of :class:`torchmetrics.Metric` defined in
-        :meth:`__init__`. This format enables accurate distributed logging. Metrics consume the outputs of
-        :meth:`validate`. To track multiple metrics, return a list of metrics in a :ref:`MetricCollection
-        </pages/overview.rst#metriccollection>`.
-
-        Args:
-            train (bool, optional): True to return metrics that should be computed
-                during training and False otherwise. This flag is set automatically by the
-                :class:`.Trainer`. Default: ``False``.
-
-        Returns:
-             Metric or MetricCollection: An instance of :class:`~torchmetrics.Metric` or :ref:`MetricCollection </pages/overview.rst#metriccollection>`.
-
-        .. warning:: Each metric keeps states which are updated with data seen so far.
-                     As a result, different metric instances should be used for training
-                     and validation. See:
-                     https://torchmetrics.readthedocs.io/en/latest/pages/overview.html
-                     for more details.
-
-        Example:
-
-        .. code-block:: python
-
-            from torchmetrics.classification import Accuracy
-            from composer.models.loss import CrossEntropyLoss
-
-            def __init__(self):
-                super().__init__()
-                self.train_acc = Accuracy() # torchmetric
-                self.val_acc = Accuracy()
-                self.val_loss = CrossEntropyLoss()
-
-            def metrics(self, train: bool = False):
-                return self.train_acc if train else MetricCollection([self.val_acc, self.val_loss])
-        """
-        warnings.warn(
-            DeprecationWarning(
-                'Using ``metrics()`` is no longer supported and will be removed in a future version. Please use ``get_metrics()`` instead.'
-            ))
-        return self.get_metrics(train)
-
     def eval_forward(
         self,
         batch: Any,
@@ -221,32 +178,35 @@ class ComposerModel(torch.nn.Module, abc.ABC):
 		Returns:
 			Any: The evaluation outputs.
 		"""
-        raise NotImplementedError()
+        return outputs if outputs is not None else self.forward(batch)
 
     def update_metric(
         self,
         batch: Any,
         outputs: Any,
         metric: Metric,
-    ) -> None:
+    ) -> Optional[dict]:
         """Update the given metric.
 
 		Args:
 			batch: The dataloader batch
 			outputs: The output from :meth:`eval_forward`
 			metric (Metric): The metric to update.
+
+        Returns:
+            Optional[dict]: Optionally return metric results to be stored in state.
 		"""
         raise NotImplementedError()
 
-    def get_metrics(self, is_train: bool) -> Dict[str, Metric]:
+    def get_metrics(self, is_train: bool) -> dict[str, Metric]:
         """Get the metrics.
 
         This method will be called by the trainer immediately after :attr:`.Event.INIT`.
 
         .. note::
 
-            Each item in the returned dictionary will be ``copy.deepcopy`` before it is used. This is to ensure that each dataloader (e.g. train, eval)
-            will be accumulating metrics separately.
+            Each item in the returned dictionary will be ``copy.deepcopy`` before it is used. This
+            is to ensure that each dataloader (e.g. train, eval) will be accumulating metrics separately.
 
             To share a metric across all dataloaders, wrap it with ``MetricSpec(metric=metric, share=False)``.
 
@@ -254,6 +214,6 @@ class ComposerModel(torch.nn.Module, abc.ABC):
             is_train (bool): Whether the training metrics or evaluation metrics should be returned.
 
         Returns:
-            Dict[str, Metric]: A mapping of the metric name to a Metric.
+            dict[str, Metric]: A mapping of the metric name to a Metric.
         """
         return {}

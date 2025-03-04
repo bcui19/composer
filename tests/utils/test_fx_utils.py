@@ -15,7 +15,7 @@ from composer.utils.fx_utils import apply_stochastic_residual, count_op_instance
 
 class MyTestModel(nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.relu = nn.ReLU()
         self.factor = 0.5
@@ -68,7 +68,7 @@ def test_replace_op(model_cls, src_ops, tgt_op, count):
 
 class SimpleParallelLinears(nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.fc1 = nn.Linear(64, 64)
         self.fc2 = nn.Linear(64, 64)
@@ -81,7 +81,7 @@ class SimpleParallelLinears(nn.Module):
 
 class ParallelLinears(nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.fc1 = nn.Linear(64, 64)
         self.ln = nn.LayerNorm(64)
@@ -98,7 +98,7 @@ class ParallelLinears(nn.Module):
 
 class NotFusibleLinears(nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.fc1 = nn.Linear(64, 64, bias=False)
         self.ln = nn.LayerNorm(64)
@@ -115,7 +115,7 @@ class NotFusibleLinears(nn.Module):
 
 class NotParallelLinears(nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.fc1 = nn.Linear(64, 64)
         self.ln = nn.LayerNorm(64)
@@ -141,7 +141,7 @@ class NotParallelLinears(nn.Module):
     ],
 )
 @pytest.mark.filterwarnings(
-    r'ignore:Attempted to insert a call_module Node with no underlying reference in the owning GraphModule!.*:UserWarning'
+    r'ignore:Attempted to insert a call_module Node with no underlying reference in the owning GraphModule!.*:UserWarning',
 )
 def test_fuse_parallel_linears(model_cls, before_count, after_count):
     model = model_cls()
@@ -161,7 +161,7 @@ def test_fuse_parallel_linears(model_cls, before_count, after_count):
     [(models.resnet18, 8)],
 )
 @pytest.mark.filterwarnings(
-    r'ignore:Attempted to insert a call_module Node with no underlying reference in the owning GraphModule!.*:UserWarning'
+    r'ignore:Attempted to insert a call_module Node with no underlying reference in the owning GraphModule!.*:UserWarning',
 )
 def test_stochastic_depth(model_cls, block_count):
     model = model_cls()
@@ -175,6 +175,8 @@ def test_stochastic_depth(model_cls, block_count):
 
     out_traced = traced(inp)
     out_traced_st_depth_no_drop = traced_st_depth_no_drop(inp)
-    assert torch.allclose(out_traced,
-                          out_traced_st_depth_no_drop), 'mismatch in outputs with 0 drop rate for stochastic modules'
+    assert torch.allclose(
+        out_traced,
+        out_traced_st_depth_no_drop,
+    ), 'mismatch in outputs with 0 drop rate for stochastic modules'
     assert residual_count == block_count

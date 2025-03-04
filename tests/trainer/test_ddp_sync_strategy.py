@@ -1,23 +1,25 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List, Optional
+from typing import Optional
 
 import pytest
 import torch
 import torch.nn as nn
+from packaging import version
 from torch import Tensor
 from torch.utils.data import DataLoader
 
 from composer.core import State
-from composer.trainer.dist_strategy import ddp_sync_context, prepare_ddp_module
+from composer.devices import DeviceCPU, DeviceGPU
+from composer.distributed import ddp_sync_context, prepare_ddp_module
 from composer.utils import dist
 from tests.common.datasets import RandomClassificationDataset
 
 
 class MinimalConditionalModel(nn.Module):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.choice1 = nn.Linear(1, 1, bias=False)
@@ -41,26 +43,45 @@ class MinimalConditionalModel(nn.Module):
         return (output - target) * (output - target)
 
 
-@pytest.mark.parametrize('ddp_sync_strategy,expected_grads', [
-    pytest.param('single_auto_sync', ([-1, None, None], [-1, -1.5, None], [-1, -1.5, None]), id='single_auto_sync'),
-    pytest.param('multi_auto_sync', ([-1.5, None, None], [-1.5, -1.5, None], [-1.5, -1.5, None]), id='multi_auto_sync'),
-    pytest.param('forced_sync', ([-1, None, None], [-1, -1, None], [-1.5, -1.5, None]), id='forced_sync'),
-])
+@pytest.mark.parametrize(
+    'ddp_sync_strategy,expected_grads',
+    [
+        pytest.param(
+            'single_auto_sync',
+            ([-1, None, None], [-1.5, -1.5, None], [-1.5, -1.5, None]),
+            id='single_auto_sync',
+        ),
+        pytest.param(
+            'multi_auto_sync',
+            ([-1.5, None, None], [-1.5, -1.5, None], [-1.5, -1.5, None]),
+            id='multi_auto_sync',
+        ),
+        pytest.param('forced_sync', ([-1, None, None], [-1, -1, None], [-1.5, -1.5, None]), id='forced_sync'),
+    ],
+)
 @pytest.mark.world_size(2)
 def test_ddp_sync_strategy(
     ddp_sync_strategy: str,
-    expected_grads: List[List[Optional[float]]],
+    expected_grads: list[list[Optional[float]]],
     rank_zero_seed: int,
+    request: pytest.FixtureRequest,
 ):
+    if version.parse(torch.__version__) < version.parse('2.4.0'):
+        pytest.skip('Before PyTorch 2.4, single_auto_sync did not properly run on last microbatch')
     original_model = MinimalConditionalModel()
-    # ddp = DDP(backend="gloo", find_unused_parameters=True, sync_strategy=ddp_sync_strategy, timeout=5.)
     optimizer = torch.optim.SGD(original_model.parameters(), 0.1)
+    device = None
+    for item in request.session.items:
+        device = DeviceCPU() if item.get_closest_marker('gpu') is None else DeviceGPU()
+        break
+    assert device != None
     state = State(
         model=original_model,
         rank_zero_seed=rank_zero_seed,
         run_name='run_name',
+        device=device,
         optimizers=optimizer,
-        grad_accum=2,
+        device_train_microbatch_size=1,
         max_duration='1ep',
         dataloader=DataLoader(RandomClassificationDataset()),
         dataloader_label='train',

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pathlib
 from abc import ABC
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -40,27 +40,50 @@ class LoggerDestination(Callback, ABC):
             ...     ...,
             ...     loggers=[logger]
             ... )
+            Batch 0: {'composer_version': ...}
+            Batch 0: {'composer_commit_hash': ...}
             Batch 0: {'num_nodes': ...}
             Batch 0: {'rank_zero_seed': ...}
     """
 
-    def log_hyperparameters(self, hyperparameters: Dict[str, Any]):
+    def log_hyperparameters(self, hyperparameters: dict[str, Any]):
         """Log hyperparameters, configurations, and settings.
 
         Logs any parameter/configuration/setting that doesn't vary during the run.
 
         Args:
-            hyperparameters (Dict[str, Any]): A dictionary mapping hyperparameter names
+            hyperparameters (dict[str, Any]): A dictionary mapping hyperparameter names
                 (strings) to their values (Any).
         """
         del hyperparameters  # unused
         pass
 
-    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
+    def log_table(
+        self,
+        columns: list[str],
+        rows: list[list[Any]],
+        name: str = 'Table',
+        step: Optional[int] = None,
+    ) -> None:
+        """Log a table.
+
+        Args:
+            columns (list[str]): Names of the columns in the table.
+            rows (list[list[Any]]): 2D row-oriented array of values.
+            name (str): Name of table. (Default: ``'Table'``)
+            step (Optional[int], optional): The current step or batch of training at the
+                time of logging. Defaults to None. If not specified the specific
+                LoggerDestination implementation will choose a step (usually a running
+                counter).
+        """
+        del columns, rows, name, step
+        pass
+
+    def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None) -> None:
         """Log metrics or parameters that vary during training.
 
         Args:
-            metrics (Dict[str, float]): Dictionary mapping metric name (str) to metric
+            metrics (dict[str, float]): Dictionary mapping metric name (str) to metric
                 scalar value (float)
             step (Optional[int], optional): The current step or batch of training at the
                 time of logging. Defaults to None. If not specified the specific
@@ -70,21 +93,26 @@ class LoggerDestination(Callback, ABC):
         del metrics, step  # unused
         pass
 
-    def log_traces(self, traces: Dict[str, Any]):
+    def log_traces(self, traces: dict[str, Any]):
         """Log traces. Logs any debug-related data like algorithm traces.
 
         Args:
-            traces (Dict[str, float]): Dictionary mapping trace names (str) to trace
+            traces (dict[str, float]): Dictionary mapping trace names (str) to trace
                 (Any).
         """
         del traces
         pass
 
-    def log_images(self,
-                   images: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
-                   name: str = 'Images',
-                   channels_last: bool = False,
-                   step: Optional[int] = None):
+    def log_images(
+        self,
+        images: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
+        name: str = 'Images',
+        channels_last: bool = False,
+        step: Optional[int] = None,
+        masks: Optional[dict[str, Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]]]] = None,
+        mask_class_labels: Optional[dict[int, str]] = None,
+        use_table: bool = True,
+    ):
         """Log images. Logs any tensors or arrays as images.
 
         Args:
@@ -97,8 +125,14 @@ class LoggerDestination(Callback, ABC):
                 time of logging. Defaults to None. If not specified the specific
                 LoggerDestination implementation will choose a step (usually a running
                 counter).
+            masks (dict[str, np.ndarray | torch.Tensor | Sequence[np.ndarray | torch.Tensor]], optional): A dictionary
+                mapping the mask name (e.g. predictions or ground truth) to a sequence of masks.
+            mask_class_labels (dict[int, str], optional): Dictionary mapping label id to its name. Used for labelling
+                each color in the mask.
+            use_table (bool): Whether to make a table of the images or not. (default: ``True``). Only for use
+                with WandB.
         """
-        del images, name, channels_last, step, masks, segmentation_class_labels
+        del images, name, channels_last, step, masks, mask_class_labels, use_table
         pass
 
     def upload_file(

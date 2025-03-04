@@ -6,7 +6,7 @@
 
 Gated Linear Units replaces the projection matricies in the feed-forward block with [Gated Linear Units](https://arxiv.org/abs/2002.05202).
 
-| ![GatedLinearUnits](https://storage.cloud.google.com/docs.mosaicml.com/images/methods/gated_linear_units.png)|
+| ![GatedLinearUnits](https://storage.googleapis.com/docs.mosaicml.com/images/methods/gated_linear_units.png)|
 |:--|
 |*These equations compare the projection matricies in a standard feed-forward network, and a Gated Linear Unit.
 Following [Shazeer, 2020](https://arxiv.org/abs/2002.05202), we omit the use of bias terms. $\cdot$ represents a dot product.*|
@@ -41,11 +41,11 @@ def training_loop(model, train_loader):
 <!--pytest.mark.gpu-->
 <!--
 ```python
-from tests.fixtures.synthetic_hf_state import make_dataset_configs, synthetic_hf_state_maker
+from tests.common.models import configure_tiny_bert_hf_model
+from tests.common.datasets import dummy_bert_lm_dataloader
 
-synthetic_config = make_dataset_configs(model_family=['bert'])[0]
-_, model, train_dataloader = synthetic_hf_state_maker(synthetic_config)
-_, _, eval_dataloader = synthetic_hf_state_maker(synthetic_config)
+model = configure_tiny_bert_hf_model()
+train_dataloader, eval_dataloader = dummy_bert_lm_dataloader(), dummy_bert_lm_dataloader()
 ```
 -->
 <!--pytest-codeblocks:cont-->

@@ -40,10 +40,11 @@ To disable automatic environment report generation, use the :func:`disable_env_r
 function.  Report generation can be re-enabled by using the :func:`enable_env_report` function.
 """
 
+import functools
 import json
 import sys
 import time
-from typing import NamedTuple, Optional, TextIO
+from typing import Optional, TextIO
 
 import cpuinfo
 import importlib_metadata
@@ -51,7 +52,7 @@ import psutil
 
 from composer.utils.misc import is_notebook
 
-__all__ = ['configure_excepthook', 'disable_env_report', 'enable_env_report', 'print_env']
+__all__ = ['configure_excepthook', 'disable_env_report', 'enable_env_report', 'print_env', 'get_composer_env_dict']
 
 # Check if PyTorch is installed
 try:
@@ -88,22 +89,18 @@ _EXCEPTHOOK_REGISTERED = False
 _ENV_EXCEPTION_REPORT = True
 
 
-# Same convention as Torch collect_env, create a namedtuple to track collected fields
-class ComposerEnv(NamedTuple):
-    composer_version: str
-    composer_commit_hash: Optional[str]
-    node_world_size: int
-    host_processor_model_name: str
-    host_processor_core_count: int
-    local_world_size: int
-    accelerator_model_name: str
-    cuda_device_count: int
-
-
 def get_composer_commit_hash() -> Optional[str]:
     # Use PEP-610 to get the commit hash
     # See https://packaging.python.org/en/latest/specifications/direct-url/
-    files = importlib_metadata.files('mosaicml')
+    # Try both package names that Composer is released under
+    try:
+        files = importlib_metadata.files('mosaicml')
+    except importlib_metadata.PackageNotFoundError:
+        try:
+            files = importlib_metadata.files('composer')
+        except importlib_metadata.PackageNotFoundError:
+            return
+
     if files is None:
         return
     files = [f for f in files if str(f).endswith('direct_url.json')]
@@ -122,13 +119,14 @@ def get_composer_version() -> str:
     return str(composer.__version__)
 
 
-def get_host_processor_name() -> str:
+@functools.lru_cache(maxsize=1)
+def get_cpu_model() -> str:
     """Query the host processor name."""
     cpu_info = cpuinfo.get_cpu_info()
     return str(cpu_info.get('brand_raw', 'CPU'))
 
 
-def get_host_processor_cores() -> int:
+def get_cpu_count() -> int:
     """Determines the number of physical host processor cores."""
     return psutil.cpu_count(logical=False)
 
@@ -138,7 +136,7 @@ def get_node_world_size() -> int:
     return int(dist.get_world_size() / dist.get_local_world_size())
 
 
-def get_accel_model_name() -> str:
+def get_gpu_model() -> str:
     """Query the accelerator name."""
     return accel_device_name(None) if cuda_available() else 'N/A'
 
@@ -185,7 +183,7 @@ def _exc_report(exc_type) -> None:
             print_env(sys.stderr)
         else:
             print(
-                "Please run the \'composer_collect_env\' utility and include your environment information with the bug report\n"
+                "Please run the \'composer_collect_env\' utility and include your environment information with the bug report\n",
             )
 
 
@@ -272,32 +270,38 @@ def get_torch_env() -> str:
 
 # Composer environment information string output format
 _COMPOSER_ENV_INFO_FORMAT = """
-Composer version: {composer_version}
-Composer commit hash: {composer_commit_hash}
-Host processor model name: {host_processor_model_name}
-Host processor core count: {host_processor_core_count}
-Number of nodes: {node_world_size}
-Accelerator model name: {accelerator_model_name}
-Accelerators per node: {local_world_size}
+Composer Version: {composer_version}
+Composer Commit Hash: {composer_commit_hash}
+CPU Model: {cpu_model}
+CPU Count: {cpu_count}
+Number of Nodes: {num_nodes}
+GPU Model: {gpu_model}
+GPUs per Node: {num_gpus_per_node}
+GPU Count: {num_gpus}
 CUDA Device Count: {cuda_device_count}
 """.strip()
+
+
+# Get composer environment info as a dictionary
+def get_composer_env_dict() -> dict:
+    """Query Composer pertinent system information as a dict."""
+    return {
+        'composer_version': get_composer_version(),
+        'composer_commit_hash': get_composer_commit_hash(),
+        'cpu_model': get_cpu_model(),
+        'cpu_count': get_cpu_count(),
+        'num_nodes': get_node_world_size(),
+        'gpu_model': get_gpu_model(),
+        'num_gpus_per_node': get_local_world_size(),
+        'num_gpus': dist.get_world_size(),
+        'cuda_device_count': get_cuda_device_count(),
+    }
 
 
 # Get Composer environment info
 def get_composer_env() -> str:
     """Query Composer pertinent system information."""
-    mutable_dict = ComposerEnv(
-        composer_version=get_composer_version(),
-        composer_commit_hash=get_composer_commit_hash(),
-        host_processor_model_name=get_host_processor_name(),
-        host_processor_core_count=get_host_processor_cores(),
-        node_world_size=get_node_world_size(),
-        accelerator_model_name=get_accel_model_name(),
-        local_world_size=get_local_world_size(),
-        cuda_device_count=get_cuda_device_count(),
-    )._asdict()
-
-    return _COMPOSER_ENV_INFO_FORMAT.format(**mutable_dict)
+    return _COMPOSER_ENV_INFO_FORMAT.format(**get_composer_env_dict())
 
 
 # Generate and print environment report
@@ -362,7 +366,6 @@ def print_env(file: Optional[TextIO] = None) -> None:
         [pip3] torch-optimizer==0.1.0
         [pip3] torchmetrics==0.7.3
         [pip3] torchvision==0.10.1+cu111
-        [pip3] vit-pytorch==0.27.0
         [conda] Could not collect
 
 

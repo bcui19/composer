@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # disabling general type issues because of monkeypatching
-#yright: reportGeneralTypeIssues=none
+# pyright: reportGeneralTypeIssues=none
 
 """Fixtures available in doctests.
 
@@ -16,11 +16,13 @@ logging.basicConfig(level=logging.WARN)
 import os
 import sys
 import tempfile
+import warnings
 from typing import Any
 from typing import Callable as Callable
 from urllib.parse import urlparse
 
 import numpy as np
+import pytest
 import torch
 import torch.optim
 import torch.utils.data
@@ -47,14 +49,18 @@ from composer.core import Time as Time
 from composer.core import Timestamp as Timestamp
 from composer.core import TimeUnit as TimeUnit
 from composer.core import types as types
-from composer.datasets.synthetic import SyntheticBatchPairDataset
+from composer.devices import DeviceCPU
 from composer.loggers import InMemoryLogger as InMemoryLogger
 from composer.loggers import Logger as Logger
 from composer.loggers import RemoteUploaderDownloader
 from composer.models import ComposerModel as ComposerModel
-from composer.optim.scheduler import ConstantScheduler
-from composer.utils import LibcloudObjectStore
+from composer.optim import ConstantScheduler, DecoupledSGDW
+from composer.utils import LibcloudObjectStore, RemoteUploader
 from composer.utils import ensure_tuple as ensure_tuple
+
+# Ignore certain warnings for doctest
+warnings.filterwarnings(action='ignore', message='.*Deterministic mode.*')  # Expected
+warnings.filterwarnings(action='ignore', message='.*Some weights of Bert*')  # Expected
 
 try:
     import wandb
@@ -71,6 +77,13 @@ except ImportError:
     _COMETML_INSTALLED = False
 
 try:
+    import neptune
+    _NEPTUNE_INSTALLED = True
+    del neptune  # unused
+except ImportError:
+    _NEPTUNE_INSTALLED = False
+
+try:
     import libcloud
     _LIBCLOUD_INSTALLED = True
     del libcloud  # unused
@@ -85,18 +98,16 @@ if sys.path[0] != _repo_root:
     sys.path.insert(0, _repo_root)
 
 from tests.common import SimpleModel
+from tests.common.datasets import RandomClassificationDataset, RandomTextClassificationDataset
+
+# Disable mosaicml logger
+os.environ['MOSAICML_PLATFORM'] = 'False'
 
 # Disable wandb
 os.environ['WANDB_MODE'] = 'disabled'
 
-
-def _make_synthetic_bert_state():
-    from tests.fixtures.synthetic_hf_state import make_synthetic_bert_dataloader, make_synthetic_bert_model
-    bert_model = make_synthetic_bert_model()
-    bert_optimizer = torch.optim.SGD(bert_model.parameters(), lr=0.001)
-    mlm_dataloader = make_synthetic_bert_dataloader()
-    return bert_model, mlm_dataloader, bert_optimizer
-
+# Disable neptune
+os.environ['NEPTUNE_MODE'] = 'debug'
 
 # Change the cwd to be the tempfile, so we don't pollute the documentation source folder
 tmpdir = tempfile.mkdtemp()
@@ -111,15 +122,14 @@ Model = SimpleModel
 
 model = SimpleModel(num_channels, num_classes)
 
-optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+optimizer = DecoupledSGDW(model.parameters(), lr=0.001)
 
 scheduler = CosineAnnealingLR(optimizer, T_max=1)
 
-dataset = SyntheticBatchPairDataset(
-    total_dataset_size=100,
-    data_shape=data_shape,
+dataset = RandomClassificationDataset(
+    shape=data_shape,
+    size=100,
     num_classes=num_classes,
-    num_unique_samples_to_create=10,
 )
 
 train_dataset = dataset
@@ -147,8 +157,9 @@ state = State(
     rank_zero_seed=0,
     model=model,
     run_name='run_name',
+    device=DeviceCPU(),
     optimizers=optimizer,
-    grad_accum=1,
+    device_train_microbatch_size=batch_size,
     dataloader=train_dataloader,
     dataloader_label='train',
     max_duration='1ep',
@@ -182,7 +193,7 @@ def _new_trainer_init(self, fake_ellipses: None = None, **kwargs: Any):
     if 'model' not in kwargs:
         kwargs['model'] = model
     if 'optimizers' not in kwargs:
-        kwargs['optimizers'] = torch.optim.SGD(kwargs['model'].parameters(), lr=0.01)
+        kwargs['optimizers'] = DecoupledSGDW(kwargs['model'].parameters(), lr=0.01)
     if 'schedulers' not in kwargs:
         kwargs['schedulers'] = ConstantScheduler()
     if 'max_duration' not in kwargs:
@@ -195,7 +206,13 @@ def _new_trainer_init(self, fake_ellipses: None = None, **kwargs: Any):
         kwargs['progress_bar'] = False  # hide tqdm logging
     if 'log_to_console' not in kwargs:
         kwargs['log_to_console'] = False  # hide console logging
-    if 'load_path' in kwargs and urlparse(kwargs['load_path']).scheme == 's3':
+    if 'save_folder' in kwargs and urlparse(kwargs['save_folder']).scheme == 'gs':
+        os.environ['GCS_KEY'] = 'foo'
+        os.environ['GCS_SECRET'] = 'foo'
+    if 'load_path' in kwargs and urlparse(kwargs['load_path']).scheme in ['s3', 'oci', 'gs']:
+        if urlparse(kwargs['load_path']).scheme == 'gs':
+            os.environ['GCS_KEY'] = 'foo'
+            os.environ['GCS_SECRET'] = 'foo'
         kwargs['load_path'] = urlparse(kwargs['load_path']).path.lstrip('/')
         kwargs['load_object_store'] = LibcloudObjectStore()
     _original_trainer_init(self, **kwargs)
@@ -217,20 +234,45 @@ _original_RemoteUploaderDownloader_init = RemoteUploaderDownloader.__init__
 
 def _new_RemoteUploaderDownloader_init(self, fake_ellipses: None = None, **kwargs: Any):
     os.makedirs('./object_store', exist_ok=True)
-    kwargs.update(use_procs=False,
-                  num_concurrent_uploads=1,
-                  bucket_uri='libcloud://.',
-                  backend_kwargs={
-                      'provider': 'local',
-                      'container': '.',
-                      'provider_kwargs': {
-                          'key': os.path.abspath('./object_store'),
-                      },
-                  })
+    kwargs.update(
+        use_procs=False,
+        num_concurrent_uploads=1,
+        bucket_uri='libcloud://.',
+        backend_kwargs={
+            'provider': 'local',
+            'container': '.',
+            'provider_kwargs': {
+                'key': os.path.abspath('./object_store'),
+            },
+        },
+    )
     _original_RemoteUploaderDownloader_init(self, **kwargs)
 
 
 RemoteUploaderDownloader.__init__ = _new_RemoteUploaderDownloader_init  # type: ignore
+
+# Patch RemoteUploader __init__ function to replace arguments while preserving type
+_original_RemoteUploader_init = RemoteUploader.__init__
+
+
+def _new_RemoteUploader_init(self, fake_ellipses: None = None, **kwargs: Any):
+    os.makedirs('./object_store', exist_ok=True)
+    kwargs.update(
+        num_concurrent_uploads=1,
+        remote_folder='libcloud://.',
+        backend_kwargs={
+            'provider': 'local',
+            'container': '.',
+            'provider_kwargs': {
+                'key': os.path.abspath('./object_store'),
+            },
+        },
+        num_attempts=1,
+    )
+    _original_RemoteUploader_init(self, **kwargs)
+
+
+RemoteUploader.__init__ = _new_RemoteUploader_init
 
 # Patch ObjectStore __init__ function to replace arguments while preserving type
 _original_libcloudObjectStore_init = LibcloudObjectStore.__init__
@@ -249,3 +291,32 @@ def _new_libcloudObjectStore_init(self, fake_ellipses: None = None, **kwargs: An
 
 
 LibcloudObjectStore.__init__ = _new_libcloudObjectStore_init  # type: ignore
+
+# Note: These methods are an alternative to the tiny_bert fixtures in fixtures.py.
+# Fixtures cannot be used natively as parametrized inputs, which we require when
+# we wish to run a test across multiple models, one of which is a HuggingFace BERT Tiny.
+# As a workaround, we inject objects into the PyTest namespace. Tests should not directly
+# use pytest.{var}, but instead should import and use the helper copy methods configure_{var}
+# (in tests.common.models) so the objects in the PyTest namespace do not change.
+try:
+    import transformers
+    del transformers
+    TRANSFORMERS_INSTALLED = True
+except ImportError:
+    TRANSFORMERS_INSTALLED = False
+
+if TRANSFORMERS_INSTALLED:
+    from tests.fixtures.fixtures import (
+        tiny_bert_config_helper,
+        tiny_bert_model_helper,
+        tiny_bert_tokenizer_helper,
+        tiny_gpt2_config_helper,
+        tiny_gpt2_model_helper,
+        tiny_gpt2_tokenizer_helper,
+    )
+    pytest.tiny_bert_config = tiny_bert_config_helper()  # type: ignore
+    pytest.tiny_bert_model = tiny_bert_model_helper(pytest.tiny_bert_config)  # type: ignore
+    pytest.tiny_bert_tokenizer = tiny_bert_tokenizer_helper()  # type: ignore
+    pytest.tiny_gpt2_config = tiny_gpt2_config_helper()  # type: ignore
+    pytest.tiny_gpt2_model = tiny_gpt2_model_helper(pytest.tiny_gpt2_config)  # type: ignore
+    pytest.tiny_gpt2_tokenizer = tiny_gpt2_tokenizer_helper()  # type: ignore

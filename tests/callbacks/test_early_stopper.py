@@ -1,11 +1,9 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List
-
 import pytest
 from torch.utils.data import DataLoader
-from torchmetrics import Accuracy
+from torchmetrics.classification import MulticlassAccuracy
 
 from composer import Trainer
 from composer.callbacks.early_stopper import EarlyStopper
@@ -18,7 +16,7 @@ from tests.metrics import MetricSetterCallback
 @device('cpu', 'gpu')
 @pytest.mark.parametrize('metric_sequence', [[0.1, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], [0.1, 0.2]])
 @pytest.mark.parametrize('unit', [TimeUnit.EPOCH, TimeUnit.BATCH])
-def test_early_stopper(metric_sequence: List[float], unit: TimeUnit, device: str):
+def test_early_stopper(metric_sequence: list[float], unit: TimeUnit, device: str):
 
     if unit == TimeUnit.EPOCH:
         dataloader_label = 'eval'
@@ -27,10 +25,20 @@ def test_early_stopper(metric_sequence: List[float], unit: TimeUnit, device: str
 
     test_device = DeviceGPU() if device == 'gpu' else DeviceCPU()
 
-    early_stopper = EarlyStopper('Accuracy', dataloader_label, patience=Time(3, unit))
+    early_stopper = EarlyStopper('MulticlassAccuracy', dataloader_label, patience=Time(3, unit))
 
-    test_metric_setter = MetricSetterCallback('Accuracy', dataloader_label, Accuracy, metric_sequence, unit,
-                                              test_device)
+    test_metric_setter = MetricSetterCallback(
+        'MulticlassAccuracy',
+        dataloader_label,
+        MulticlassAccuracy,
+        metric_sequence,
+        unit,
+        test_device,
+        metric_args={
+            'num_classes': 2,
+            'average': 'micro',
+        },
+    )
 
     trainer = Trainer(
         model=SimpleModel(num_features=5),

@@ -5,7 +5,6 @@
 
 Primitives are tested in test_blurpool.py
 """
-from typing import List
 from unittest.mock import Mock
 
 import pytest
@@ -27,15 +26,17 @@ def state(minimal_state: State):
     return minimal_state
 
 
-@pytest.fixture(params=[
-    # replace_conv, replace_pool, blur_first
-    (True, True, True),
-    (True, True, False),
-    (True, False, True),
-    (True, False, False),
-    (False, True, True),
-    (False, True, False),
-])
+@pytest.fixture(
+    params=[
+        # replace_conv, replace_pool, blur_first
+        (True, True, True),
+        (True, True, False),
+        (True, False, True),
+        (True, False, False),
+        (False, True, True),
+        (False, True, False),
+    ],
+)
 def blurpool_instance(request) -> BlurPool:
     replace_conv, replace_pool, blur_first = request.param
     return BlurPool(
@@ -136,7 +137,7 @@ def test_blurconv2d_optimizer_params_updated():
     apply_blurpool(model, optimizers=optimizer)
 
     new_layer = model.conv1
-    param_list: List[torch.Tensor] = optimizer.param_groups[0]['params']
+    param_list: list[torch.Tensor] = optimizer.param_groups[0]['params']
 
     # assert old parameters removed
     assert not module_surgery._tensor_in(original_layer.weight, param_list)

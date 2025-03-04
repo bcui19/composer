@@ -9,7 +9,7 @@ Provides utilities to do FX-based model transformations.
 import logging
 import operator
 import re
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Mapping, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 __all__ = ['count_op_instances', 'replace_op', 'fuse_parallel_linears', 'apply_stochastic_residual']
 
 
-def count_op_instances(gm: GraphModule, ops: Union[Callable, str, List[Union[Callable, str]]]) -> int:
+def count_op_instances(gm: GraphModule, ops: Union[Callable, str, list[Union[Callable, str]]]) -> int:
     """Counts the number of instances of ``op`` in ``gm``.
 
     .. rubric:: Example
@@ -50,7 +50,7 @@ def count_op_instances(gm: GraphModule, ops: Union[Callable, str, List[Union[Cal
 
     Arguments:
         module (GraphModule): The source FX-traced graph.
-        op (Union[Callable, str, List[Union[Callable, str]]]):
+        op (Union[Callable, str, list[Union[Callable, str]]]):
             The operations to count.
 
     Returns:
@@ -63,13 +63,19 @@ def count_op_instances(gm: GraphModule, ops: Union[Callable, str, List[Union[Cal
         for op in ops:
             if n.target == op:
                 count += 1
-            elif n.op == 'call_module' and isinstance(op, type) and isinstance(all_modules[n.target], op):
+            elif n.op == 'call_module' and isinstance(op, type) and isinstance(n.target, str) and isinstance(
+                all_modules[n.target],
+                op,
+            ):
                 count += 1
     return count
 
 
-def replace_op(gm: GraphModule, src_ops: Union[Callable, str, List[Union[Callable, str]]],
-               tgt_op: Callable[..., Any]) -> GraphModule:
+def replace_op(
+    gm: GraphModule,
+    src_ops: Union[Callable, str, list[Union[Callable, str]]],
+    tgt_op: Callable[..., Any],
+) -> GraphModule:
     """Replace a single operator, torch method or function with another.
 
     .. rubric:: Example
@@ -94,7 +100,7 @@ def replace_op(gm: GraphModule, src_ops: Union[Callable, str, List[Union[Callabl
 
     Arguments:
         module (GraphModule): The source FX-traced graph.
-        src_ops (Union[Callable, str, List[Union[Callable, str]]):
+        src_ops (Union[Callable, str, list[Union[Callable, str]]):
             Replace these operations.
         tgt_op (Callable): Replacement for the operations
 
@@ -113,7 +119,7 @@ def replace_op(gm: GraphModule, src_ops: Union[Callable, str, List[Union[Callabl
     return gm
 
 
-def _get_ancestors(node: Node) -> List[Node]:
+def _get_ancestors(node: Node) -> list[Node]:
     ancestorNodes = []
     while node.op != 'placeholder':
         ancestorNodes.append(node)
@@ -121,7 +127,7 @@ def _get_ancestors(node: Node) -> List[Node]:
     return ancestorNodes
 
 
-def _get_residual_block_nodes(nodeLHS: Node, nodeRHS: Node) -> Tuple[List[Node], List[Node]]:
+def _get_residual_block_nodes(nodeLHS: Node, nodeRHS: Node) -> tuple[list[Node], list[Node]]:
     """Walk backwards from nodeLHS and nodeRSH to the root and construct lists of their parents.
 
     Arguments:
@@ -144,13 +150,13 @@ def _get_residual_block_nodes(nodeLHS: Node, nodeRHS: Node) -> Tuple[List[Node],
     return lhsAncestors, rhsAncestors
 
 
-def _attach_tag(nodes: List[Node], tag: str):
+def _attach_tag(nodes: list[Node], tag: str):
     """Attach tag to the given nodes for the splitter."""
     for node in nodes:
         node.tag = tag  # type: ignore[attr-defined]
 
 
-def _tag_residual_nodes(gm: GraphModule) -> Tuple[List[str], int]:
+def _tag_residual_nodes(gm: GraphModule) -> tuple[list[str], int]:
     """Tag nodes for splitting."""
     # all nodes that are not a part of the residual blocks are tagged with "mainN_{count}".
     # a tag is required for all nodes by split_by_tags
@@ -182,7 +188,7 @@ def _tag_residual_nodes(gm: GraphModule) -> Tuple[List[str], int]:
     return all_tags, count
 
 
-def _get_residual_modules(gm: GraphModule, node: Node) -> Tuple[Optional[GraphModule], Optional[GraphModule], int]:
+def _get_residual_modules(gm: GraphModule, node: Node) -> tuple[Optional[GraphModule], Optional[GraphModule], int]:
     """Returns GraphModules for the main and residual branches.
 
     node.op is assumed to be a call_module
@@ -198,10 +204,12 @@ def _get_residual_modules(gm: GraphModule, node: Node) -> Tuple[Optional[GraphMo
         return None, None, 0
 
 
-def _replace_residual_pattern(gm: GraphModule,
-                              original_node: Node,
-                              replacement_module: str,
-                              has_residual_ops: bool = False) -> None:
+def _replace_residual_pattern(
+    gm: GraphModule,
+    original_node: Node,
+    replacement_module: str,
+    has_residual_ops: bool = False,
+) -> None:
     """Replaces main, residual and add_node with the ``replacement_module``.
 
     ``replacement_module`` is already added to the gm.
@@ -220,7 +228,7 @@ def _replace_residual_pattern(gm: GraphModule,
     gm.graph.lint()
 
 
-def apply_stochastic_residual(gm: GraphModule, drop_rate: float = 0.2) -> Tuple[GraphModule, int]:
+def apply_stochastic_residual(gm: GraphModule, drop_rate: float = 0.2) -> tuple[GraphModule, int]:
     """Detect and replace residual pattern with their stochastic equivalent.
 
     Arguments:
@@ -231,9 +239,11 @@ def apply_stochastic_residual(gm: GraphModule, drop_rate: float = 0.2) -> Tuple[
     """
     if not isinstance(gm, GraphModule):
         raise ValueError(
-            f'Input to apply_stochastic_residual should be an instance of GraphModule. Received {type(gm)}')
+            f'Input to apply_stochastic_residual should be an instance of GraphModule. Received {type(gm)}',
+        )
     all_tags, count = _tag_residual_nodes(gm)
     split_gm = split_by_tags(gm, all_tags)
+    assert isinstance(split_gm, GraphModule)
     for node in split_gm.graph.nodes:
         if node.op != 'call_module':
             continue
@@ -247,18 +257,23 @@ def apply_stochastic_residual(gm: GraphModule, drop_rate: float = 0.2) -> Tuple[
     return split_gm, count
 
 
-def _can_linears_be_fused(linear_nodes: List[Node], all_modules: Mapping[str, nn.Module]) -> bool:
+def _can_linears_be_fused(linear_nodes: list[Node], all_modules: Mapping[str, nn.Module]) -> bool:
     """Check if all the linears have bias."""
     # Forcing node.target to str is fine here as we are dealing with nn.Modules
     # and their target is a str.
-    bias = all_modules[str(linear_nodes[0].target)].bias is None
+    bias = all_modules[str(linear_nodes[0].target)].bias is None  # pyright: ignore[reportUnnecessaryComparison]
 
-    return all(bias == (all_modules[str(node.target)].bias is None) for node in linear_nodes)
+    return all(
+        bias == (all_modules[str(node.target)].bias is None)  # pyright: ignore[reportUnnecessaryComparison]
+        for node in linear_nodes
+    )
 
 
-def _create_fused_linear(linear_nodes: List[Node],
-                         all_modules: Mapping[str, nn.Module],
-                         keep_weights: bool = False) -> Tuple[nn.Module, List[int]]:
+def _create_fused_linear(
+    linear_nodes: list[Node],
+    all_modules: Mapping[str, nn.Module],
+    keep_weights: bool = False,
+) -> tuple[nn.Module, list[int]]:
     """Check if the linears can be fused.
 
     If the linears can be fused, create a fused nn.Linear instance and return it.
@@ -269,7 +284,7 @@ def _create_fused_linear(linear_nodes: List[Node],
     assert len(linear_nodes) > 1, 'There should be at least 2 linears for fusion'
     out_features = []
     in_features = all_modules[str(linear_nodes[0].target)].in_features
-    bias = all_modules[str(linear_nodes[0].target)].bias is not None
+    bias = all_modules[str(linear_nodes[0].target)].bias is not None  # pyright: ignore[reportUnnecessaryComparison]
 
     for node in linear_nodes:
         out_features.append(all_modules[str(node.target)].out_features)
@@ -316,7 +331,7 @@ def fuse_parallel_linears(gm: GraphModule, keep_weights: bool = False) -> GraphM
     Returns:
         GraphModule: Modified GraphModule with parallel linears fused.
     """
-    all_modules: Dict[str, nn.Module] = dict(gm.named_modules())
+    all_modules: dict[str, nn.Module] = dict(gm.named_modules())
     fused_count = 0
     for node in gm.graph.nodes:
         # There could be more than two parallel linears
@@ -324,7 +339,8 @@ def fuse_parallel_linears(gm: GraphModule, keep_weights: bool = False) -> GraphM
 
         # Check all the users of current node and collect all linear layers
         for user in list(node.users):
-            if user.op == 'call_module' and isinstance(all_modules[user.target], nn.Linear):
+            if user.op == 'call_module' and isinstance(user.target,
+                                                       str) and isinstance(all_modules[user.target], nn.Linear):
                 linears_to_fuse.append(user)
 
         # Fuse if there are more than 1 parallel linear layers

@@ -14,17 +14,15 @@ add these directories to sys.path here. If the directory is relative to the
 documentation root, use os.path.abspath to make it absolute, like shown here.
 """
 import ast
-import importlib
 import inspect
 import json
 import os
 import shutil
 import sys
 import tempfile
-import textwrap
 import types
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Type
 
 import sphinx.application
 import sphinx.ext.autodoc
@@ -78,7 +76,7 @@ extensions = [
     'sphinx.ext.coverage',
     'sphinx.ext.napoleon',
     'sphinxcontrib.katex',
-    'sphinx.ext.linkcode',
+    'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
     'sphinxemoji.sphinxemoji',
     'sphinxext.opengraph',
@@ -139,7 +137,11 @@ source_suffix = ['.rst', '.md']
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = [
-    '_build', 'Thumbs.db', '.DS_Store', 'examples/imagenet/README.md', 'examples/segmentation/README.md'
+    '_build',
+    'Thumbs.db',
+    '.DS_Store',
+    'examples/imagenet/README.md',
+    'examples/segmentation/README.md',
 ]
 
 napoleon_custom_sections = [('Returns', 'params_style')]
@@ -193,7 +195,7 @@ autodoc_type_aliases = {
 autodoc_default_options = {
     # don't document the forward() method. Because of how torch.nn.Module.forward is defined in the
     # base class, sphinx does not realize that forward overrides an inherited method.
-    'exclude-members': 'hparams_registry'
+    'exclude-members': 'hparams_registry',
 }
 autodoc_inherit_docstrings = False
 
@@ -215,10 +217,8 @@ intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
     'torch': ('https://pytorch.org/docs/stable/', None),
-    'yapf': ('https://docs.mosaicml.com/projects/yahp/en/stable/', None),
     'torchvision': ('https://pytorch.org/vision/stable/', None),
     'torchtext': ('https://pytorch.org/text/stable/', None),
-    'torchmetrics': ('https://torchmetrics.readthedocs.io/en/latest/', None),
     'libcloud': ('https://libcloud.readthedocs.io/en/stable/', None),
     'PIL': ('https://pillow.readthedocs.io/en/stable', None),
     'coolname': ('https://coolname.readthedocs.io/en/latest/', None),
@@ -277,7 +277,7 @@ def rstjinja(app, docname, source):
     source[0] = rendered
 
 
-def get_algorithms_metadata() -> Dict[str, Dict[str, str]]:
+def get_algorithms_metadata() -> dict[str, dict[str, str]]:
     """Get the metadata for algorithms from the ``metadata.json`` files."""
     EXCLUDE = ['no_op_model']
 
@@ -305,6 +305,11 @@ def get_algorithms_metadata() -> Dict[str, Dict[str, str]]:
 
 html_context = {'metadata': get_algorithms_metadata()}
 
+# Sphinx context injection deprecation patch
+html_baseurl = os.environ.get('READTHEDOCS_CANONICAL_URL', '')
+if os.environ.get('READTHEDOCS', '') == 'True':
+    html_context['readthedocs'] = True
+
 # ClassDocumenter.add_directive_header uses ClassDocumenter.add_line to
 #   write the class documentation.
 # We'll monkeypatch the add_line method and intercept lines that begin
@@ -316,11 +321,11 @@ add_line = ClassDocumenter.add_line
 line_to_delete = _('Bases: %s') % u':py:class:`object`'
 
 
-def _auto_rst_for_module(module: types.ModuleType, exclude_members: List[Any]) -> str:
+def _auto_rst_for_module(module: types.ModuleType, exclude_members: list[Any]) -> str:
     """Generate the content of an rst file documenting a module.
 
     Includes the module docstring, followed by tables for the functions,
-    classes, yahp hparams, and exceptions
+    classes, and exceptions
 
     Args:
         module: The module object to document
@@ -334,11 +339,11 @@ def _auto_rst_for_module(module: types.ModuleType, exclude_members: List[Any]) -
     name = module.__name__
     lines = []
 
-    functions: List[Tuple[str, types.FunctionType]] = []
-    exceptions: List[Tuple[str, Type[BaseException]]] = []
-    classes: List[Tuple[str, Type[object]]] = []
-    methods: List[Tuple[str, types.MethodType]] = []
-    attributes: List[Tuple[str, object]] = []
+    functions: list[tuple[str, types.FunctionType]] = []
+    exceptions: list[tuple[str, Type[BaseException]]] = []
+    classes: list[tuple[str, Type[object]]] = []
+    methods: list[tuple[str, types.MethodType]] = []
+    attributes: list[tuple[str, object]] = []
 
     # add title and module docstring
     lines.append(f'{name}')
@@ -410,20 +415,20 @@ def _auto_rst_for_module(module: types.ModuleType, exclude_members: List[Any]) -
     return '\n'.join(lines)
 
 
-def _modules_to_rst() -> List[types.ModuleType]:
+def _modules_to_rst() -> list[types.ModuleType]:
     """Return the list of modules for which to generate API reference rst files."""
     # adding composer.functional to the below list yields:
     #   AttributeError: module 'composer' has no attribute 'functional'
     import composer.functional as cf
 
-    document_modules: List[types.Module] = [
+    document_modules: list[types.Module] = [
         composer,
         cf,
         composer.utils.dist,
         composer.utils.reproducibility,
         composer.core.types,
     ]
-    exclude_modules: List[types.Module] = [composer.trainer, composer._version]
+    exclude_modules: list[types.Module] = [composer.trainer, composer._version]
     for name in composer.__dict__:
         obj = composer.__dict__[name]
         if isinstance(obj, types.ModuleType) and obj not in exclude_modules:
@@ -440,10 +445,10 @@ def _generate_rst_files_for_modules() -> None:
     """
     docs_dir = os.path.abspath(os.path.dirname(__file__))
     module_rst_save_dir = os.path.join(docs_dir, 'api_reference')
-    # gather up modules to generate rst files for
+    # Gather up modules to generate rst files for
     document_modules = _modules_to_rst()
 
-    # rip out types that are duplicated in top-level composer module
+    # Rip out types that are duplicated in top-level composer module
     composer_imported_types = []
     for name in composer.__all__:
         obj = composer.__dict__[name]
@@ -456,10 +461,10 @@ def _generate_rst_files_for_modules() -> None:
         saveas = os.path.join(module_rst_save_dir, module.__name__ + '.rst')
         print(f'Generating rst file {saveas} for module: {module.__name__}')
 
-        # avoid duplicate entries in docs. We add torch's _LRScheduler to
-        # types, so we get a ``WARNING: duplicate object description`` if we
-        # don't exclude it
-        exclude_members = [torch.optim.lr_scheduler._LRScheduler]
+        # Avoid duplicate entries in docs. To avoid ``WARNING: duplicate object description``
+        # we exclude torch's _LRScheduler as we've added it to types. Similarly, we exclude
+        # typing.Any as we map Batch to Any.
+        exclude_members = [torch.optim.lr_scheduler._LRScheduler, Any]
         if module is not composer:
             exclude_members += composer_imported_types
 
@@ -521,36 +526,6 @@ def _determine_lineno_of_attribute(module: types.ModuleType, attribute: str):
     return None
 
 
-def linkcode_resolve(domain: str, info: Dict[str, str]):
-    """Adds links to the GitHub source code in the API Reference."""
-    assert domain == 'py', f'unsupported domain: {domain}'
-    module_name = info['module']
-
-    # Get the object and determine the line number
-    obj_name_in_module = info['fullname']
-    module = importlib.import_module(module_name)
-    lineno = _determine_lineno_of_attribute(module, obj_name_in_module)
-    if lineno is None:
-        obj = _recursive_getattr(module, obj_name_in_module)
-        if isinstance(obj, property):
-            # For properties, return the getter, where it is documented
-            obj = obj.fget
-        try:
-            _, lineno = inspect.getsourcelines(obj)
-        except TypeError:
-            # `inspect.getsourcelines` does not work on all object types (e.g. attributes).
-            # If it fails, it still might be possible to determine the source line through better parsing
-            # in _determine_lineno_of_attribute
-            pass
-    if lineno is None:
-        log.debug(f'Could not determine source line number for {module_name}.{obj_name_in_module}.')
-        return None
-    # Format the link
-    filename = module_name.replace('.', '/')
-    commit_sha = _COMMIT_SHA
-    return f'https://github.com/mosaicml/composer/blob/{commit_sha}/{filename}.py#L{lineno}'
-
-
 class PatchedHTMLTranslator(HTML5Translator):
     """Open all external links in a new tab."""
 
@@ -564,12 +539,11 @@ class PatchedHTMLTranslator(HTML5Translator):
             atts['class'] += ' external'
             # ---------------------------------------------------------
             # Customize behavior (open in new tab, secure linking site)
-            if 'refid' not in node and (not any(node['refuri'].startswith(x)
-                                                for x in ('/', 'https://docs.mosaicml.com', '#')) or
-                                        node['refuri'].startswith('https://docs.mosaicml.com/projects/yahp')):
+            if 'refid' not in node and (
+                not any(node['refuri'].startswith(x) for x in ('/', 'https://docs.mosaicml.com', '#'))
+            ):
                 # If there's a refid, or the refuri starts with a non-external uri scheme, then it's an internal
                 # (hardcoded) link, so don't open that in a new tab
-                # Treat yahp links as external
                 # Otherwise, it's really an external link. Open it in a new tab.
                 atts['target'] = '_blank'
                 atts['rel'] = 'noopener noreferrer'

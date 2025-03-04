@@ -46,12 +46,13 @@ from composer.algorithms.cutmix import CutMix
 from composer.algorithms.cutout import CutOut
 from composer.algorithms.ema import EMA
 from composer.algorithms.factorize import Factorize
-from composer.algorithms.fused_layernorm import FusedLayerNorm
 from composer.algorithms.gated_linear_units import GatedLinearUnits
 from composer.algorithms.ghost_batchnorm import GhostBatchNorm
 from composer.algorithms.gradient_clipping import GradientClipping
+from composer.algorithms.gyro_dropout import GyroDropout
 from composer.algorithms.label_smoothing import LabelSmoothing
 from composer.algorithms.layer_freezing import LayerFreezing
+from composer.algorithms.low_precision_groupnorm import LowPrecisionGroupNorm
 from composer.algorithms.low_precision_layernorm import LowPrecisionLayerNorm
 from composer.algorithms.mixup import MixUp
 from composer.algorithms.no_op_model import NoOpModel
@@ -77,13 +78,13 @@ __all__ = [
     'CutOut',
     'EMA',
     'Factorize',
-    'FusedLayerNorm',
     'GatedLinearUnits',
     'GhostBatchNorm',
     'GradientClipping',
     'LabelSmoothing',
     'LayerFreezing',
     'LowPrecisionLayerNorm',
+    'LowPrecisionGroupNorm',
     'MixUp',
     'NoOpModel',
     'ProgressiveResizing',
@@ -98,4 +99,5 @@ __all__ = [
     'StochasticDepth',
     'SWA',
     'WeightStandardization',
+    'GyroDropout',
 ]

@@ -4,39 +4,65 @@
 By default, the trainer enables :class:`.ProgressBarLogger`, which logs
 information to a ``tqdm`` progress bar.
 
+
+If you don't want to use a progress bar, but you still
+want metrics logged to the console, you can set the ``log_to_console``, ``console_log_interval``, and ``console_stream``
+arguments in :class:`.Trainer`, like the following code, which will log metrics to the console every 100 batches:
+
+.. testcode::
+    from composer import Trainer
+
+    trainer = Trainer(
+        model=model,
+        train_dataloader=train_dataloader,
+        eval_dataloader=eval_dataloader,
+        log_to_console=True,
+        progress_bar=False,
+        console_log_interval='100ba'
+    )
+
+
 To attach other loggers, use the ``loggers`` argument. For example, the
 below logs the results to `Weights and
-Biases <https://www.wandb.com/>`__, and `CometML <https://www.comet.com/?utm_source=mosaicml&utm_medium=partner&utm_campaign=mosaicml_comet_integration>`__,
+Biases <https://www.wandb.com/>`__, `MLflow <https://www.mlflow.org/docs/latest/index.html>`__, `CometML <https://www.comet.com/?utm_source=mosaicml&utm_medium=partner&utm_campaign=mosaicml_comet_integration>`__, and `neptune.ai <https://neptune.ai/>`__,
 and also saves them to the file
 ``log.txt``.
 
 .. testsetup::
-    :skipif: not _WANDB_INSTALLED or not _COMETML_INSTALLED
+    :skipif: not _WANDB_INSTALLED or not _COMETML_INSTALLED or not _NEPTUNE_INSTALLED
 
     import os
+    import logging
 
+    logging.getLogger("neptune").setLevel(logging.CRITICAL)
+
+    os.environ["NEPTUNE_MODE"] = "debug"
     os.environ["WANDB_MODE"] = "disabled"
     os.environ["COMET_API_KEY"] = "<comet_api_key>"
+    os.environ["MLFLOW_TRACKING_URI"] = ""
 
 .. testcode::
-    :skipif: not _WANDB_INSTALLED or not _COMETML_INSTALLED
+    :skipif: not _WANDB_INSTALLED or not _COMETML_INSTALLED or not _NEPTUNE_INSTALLED
 
     from composer import Trainer
-    from composer.loggers import WandBLogger, CometMLLogger, FileLogger
+    from composer.loggers import WandBLogger, CometMLLogger, MLFlowLogger, NeptuneLogger, FileLogger
+
 
     wandb_logger = WandBLogger()
     cometml_logger = CometMLLogger()
+    mlflow_logger = MLFlowLogger()
+    neptune_logger = NeptuneLogger()
     file_logger = FileLogger(filename="log.txt")
 
     trainer = Trainer(
         model=model,
         train_dataloader=train_dataloader,
         eval_dataloader=eval_dataloader,
-        loggers=[wandb_logger, cometml_logger, file_logger],
+        loggers=[wandb_logger, cometml_logger, mlflow_logger, neptune_logger, file_logger],
     )
 
 .. testcleanup::
-    :skipif: not _WANDB_INSTALLED or not _COMETML_INSTALLED
+    :skipif: not _WANDB_INSTALLED or not _COMETML_INSTALLED or not _NEPTUNE_INSTALLED
 
     trainer.engine.close()
     os.remove("log.txt")
@@ -51,7 +77,9 @@ Available Loggers
 
     ~file_logger.FileLogger
     ~wandb_logger.WandBLogger
+    ~mlflow_logger.MLFlowLogger
     ~cometml_logger.CometMLLogger
+    ~neptune_logger.NeptuneLogger
     ~progress_bar_logger.ProgressBarLogger
     ~tensorboard_logger.TensorboardLogger
     ~in_memory_logger.InMemoryLogger
@@ -110,7 +138,7 @@ into a dictionary:
 
 .. testcode::
 
-    from typing import Any, Dict, Optional
+    from typing import Any, Optional
 
     from composer.loggers.logger_destination import LoggerDestination
     from composer.core.time import Timestamp
@@ -121,7 +149,7 @@ into a dictionary:
             # Dictionary to store logged data
             self.data = {}
 
-        def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
+        def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None):
             for k, v in self.data.items():
                 if k not in self.data:
                     self.data[k] = []

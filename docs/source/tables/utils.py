@@ -15,7 +15,8 @@ def list_dirs(folder):
         folder (str): The folder to list dirs for.
     """
     return sorted(
-        child.name for child in folder.iterdir() if child.is_dir() and ('__pycache__' not in str(child.absolute())))
+        child.name for child in folder.iterdir() if child.is_dir() and ('__pycache__' not in str(child.absolute()))
+    )
 
 
 def assert_attributes_exist(name, module_dict, attributes):
@@ -118,7 +119,7 @@ def index_tag_in_lines(lines, tag):
     """Returns line number where tag is found.
 
     Args:
-        lines (list): List of lines to check.
+        lines (list): list of lines to check.
         tag (str): Tag to find.
     """
     for index, line in enumerate(lines):

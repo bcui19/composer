@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, TypeVar
+from typing import Optional, TypeVar
 
 import torch
 import torch.backends.cuda
@@ -32,6 +32,7 @@ class DeviceGPU(Device):
             For more information, see :ref:`torch:tf32_on_ampere`.
     """
     dist_backend = 'nccl'
+    name = 'gpu'
 
     def __init__(
         self,
@@ -41,7 +42,7 @@ class DeviceGPU(Device):
     ):
         if not torch.cuda.is_available():
             raise ValueError('DeviceGPU cannot be created as torch.cuda is not available.')
-        if not device_id:
+        if device_id is None:
             device_id = dist.get_local_rank()
         self._device = torch.device(f'cuda:{device_id}')
         torch.cuda.set_device(self._device)
@@ -56,11 +57,3 @@ class DeviceGPU(Device):
 
     def tensor_to_device(self, tensor: torch.Tensor) -> torch.Tensor:
         return tensor.to(self._device, non_blocking=True)
-
-    def state_dict(self) -> Dict[str, Any]:
-        return {
-            'rng': torch.cuda.get_rng_state(),
-        }
-
-    def load_state_dict(self, state: Dict[str, Any]) -> None:
-        torch.cuda.set_rng_state(state['rng'])

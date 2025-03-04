@@ -21,7 +21,7 @@ def apply_squeeze_excite(
     latent_channels: float = 64,
     min_channels: int = 128,
     optimizers: Optional[Union[Optimizer, Sequence[Optimizer]]] = None,
-):
+) -> None:
     """Adds Squeeze-and-Excitation blocks (`Hu et al, 2019 <https://arxiv.org/abs/1709.01507>`_) after
     :class:`torch.nn.Conv2d` layers.
 
@@ -50,9 +50,6 @@ def apply_squeeze_excite(
             then it is safe to omit this parameter. These optimizers will see the correct
             model parameters.
 
-    Returns:
-        The modified model
-
     Example:
         .. testcode::
 
@@ -72,8 +69,6 @@ def apply_squeeze_excite(
             return SqueezeExciteConv2d.from_conv2d(module, module_index, latent_channels=latent_channels)
 
     module_surgery.replace_module_classes(model, optimizers=optimizers, policies={torch.nn.Conv2d: convert_module})
-
-    return model
 
 
 class SqueezeExcite2d(torch.nn.Module):
@@ -96,11 +91,14 @@ class SqueezeExcite2d(torch.nn.Module):
         self.latent_channels = int(latent_channels if latent_channels >= 1 else latent_channels * num_features)
         flattened_dims = num_features
 
-        self.pool_and_mlp = torch.nn.Sequential(torch.nn.AdaptiveAvgPool2d(1), torch.nn.Flatten(),
-                                                torch.nn.Linear(flattened_dims, self.latent_channels, bias=False),
-                                                torch.nn.ReLU(),
-                                                torch.nn.Linear(self.latent_channels, num_features, bias=False),
-                                                torch.nn.Sigmoid())
+        self.pool_and_mlp = torch.nn.Sequential(
+            torch.nn.AdaptiveAvgPool2d(1),
+            torch.nn.Flatten(),
+            torch.nn.Linear(flattened_dims, self.latent_channels, bias=False),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.latent_channels, num_features, bias=False),
+            torch.nn.Sigmoid(),
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         n, c, _, _ = input.shape
@@ -114,7 +112,7 @@ class SqueezeExciteConv2d(torch.nn.Module):
     def __init__(self, *args, latent_channels: float = 0.125, conv: Optional[torch.nn.Conv2d] = None, **kwargs):
         super().__init__()
         self.conv = torch.nn.Conv2d(*args, **kwargs) if conv is None else conv
-        self.conv._already_squeeze_excited = True  # Mark to avoid rewrapping on duplicate calls
+        self.conv._already_squeeze_excited = True  # Mark to avoid rewrapping on duplicate calls # pyright: ignore[reportGeneralTypeIssues]
         self.se = SqueezeExcite2d(num_features=self.conv.out_channels, latent_channels=latent_channels)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -164,16 +162,20 @@ class SqueezeExcite(Algorithm):
         return event == Event.INIT
 
     def apply(self, event: Event, state: State, logger: Logger) -> Optional[int]:
-        state.model = apply_squeeze_excite(state.model,
-                                           optimizers=state.optimizers,
-                                           latent_channels=self.latent_channels,
-                                           min_channels=self.min_channels)
+        apply_squeeze_excite(
+            state.model,
+            optimizers=state.optimizers,
+            latent_channels=self.latent_channels,
+            min_channels=self.min_channels,
+        )
         layer_count = module_surgery.count_module_instances(state.model, SqueezeExciteConv2d)
 
-        log.info(f'Applied SqueezeExcite to model {state.model.__class__.__name__} '
-                 f'with latent_channels={self.latent_channels}, '
-                 f'min_channels={self.min_channels}. '
-                 f'Model now has {layer_count} SqueezeExcite layers.')
+        log.info(
+            f'Applied SqueezeExcite to model {state.model.__class__.__name__} '
+            f'with latent_channels={self.latent_channels}, '
+            f'min_channels={self.min_channels}. '
+            f'Model now has {layer_count} SqueezeExcite layers.',
+        )
 
         logger.log_hyperparameters({
             'squeeze_excite/num_squeeze_excite_layers': layer_count,

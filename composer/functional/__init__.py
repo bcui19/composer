@@ -24,12 +24,13 @@ from composer.algorithms.cutmix import cutmix_batch
 from composer.algorithms.cutout import cutout_batch
 from composer.algorithms.ema import compute_ema
 from composer.algorithms.factorize import apply_factorization
-from composer.algorithms.fused_layernorm import apply_fused_layernorm
 from composer.algorithms.gated_linear_units import apply_gated_linear_units
 from composer.algorithms.ghost_batchnorm import apply_ghost_batchnorm
 from composer.algorithms.gradient_clipping import apply_gradient_clipping
+from composer.algorithms.gyro_dropout import apply_gyro_dropout
 from composer.algorithms.label_smoothing import smooth_labels
 from composer.algorithms.layer_freezing import freeze_layers
+from composer.algorithms.low_precision_groupnorm import apply_low_precision_groupnorm
 from composer.algorithms.low_precision_layernorm import apply_low_precision_layernorm
 from composer.algorithms.mixup import mixup_batch
 from composer.algorithms.progressive_resizing import resize_batch
@@ -51,11 +52,11 @@ __all__ = [
     'cutmix_batch',
     'cutout_batch',
     'apply_factorization',
-    'apply_fused_layernorm',
     'apply_gated_linear_units',
     'apply_ghost_batchnorm',
     'apply_gradient_clipping',
     'apply_low_precision_layernorm',
+    'apply_low_precision_groupnorm',
     'smooth_labels',
     'freeze_layers',
     'mixup_batch',
@@ -67,4 +68,5 @@ __all__ = [
     'apply_squeeze_excite',
     'apply_stochastic_depth',
     'apply_weight_standardization',
+    'apply_gyro_dropout',
 ]

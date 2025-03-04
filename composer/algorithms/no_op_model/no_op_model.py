@@ -6,12 +6,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 import torch.nn.functional as F
 from torchmetrics import Metric
-from torchmetrics.classification.accuracy import Accuracy
+from torchmetrics.classification import BinaryAccuracy
 
 from composer.core import Algorithm, Event, State
 from composer.loggers import Logger
@@ -57,8 +57,8 @@ class NoOpModelClass(ComposerModel):
         assert isinstance(y, torch.Tensor)
         return y * self.weights
 
-    def get_metrics(self, is_train: bool) -> Dict[str, Metric]:
-        return {'Accuracy': Accuracy()}
+    def get_metrics(self, is_train: bool) -> dict[str, Metric]:
+        return {'BinaryAccuracy': BinaryAccuracy()}
 
     def eval_forward(self, batch: Batch, outputs: Optional[Any] = None):
         x, y = batch
@@ -73,18 +73,27 @@ class NoOpModelClass(ComposerModel):
 class NoOpModel(Algorithm):
     """Runs on :attr:`Event.INIT` and replaces the model with a dummy :class:`.NoOpModelClass` instance."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # No arguments
         pass
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}()'
+
+    @staticmethod
+    def required_on_load() -> bool:
+        return True
 
     def match(self, event: Event, state: State) -> bool:
         return event == Event.INIT
 
     def apply(self, event: Event, state: State, logger: Logger) -> Optional[int]:
         new_model = NoOpModelClass(state.model)
-        module_surgery.update_params_in_optimizer(old_params=state.model.parameters(),
-                                                  new_params=new_model.parameters(),
-                                                  optimizers=state.optimizers)
+        module_surgery.update_params_in_optimizer(
+            old_params=state.model.parameters(),
+            new_params=new_model.parameters(),
+            optimizers=state.optimizers,
+        )
         state.model = new_model
 
         log.info('Replaced model with a NoOpModel')

@@ -7,7 +7,7 @@
 
 Sequence Length Warmup linearly increases the sequence length (number of tokens per sentence) used to train a language model from a `min_seq_length` to a `max_seq_length` over some duration at the beginning of training. The underlying motivation is that sequence length is a proxy for the difficulty of an example, and this method assumes a simple curriculum where the model is trained on easy examples (by this definition) first. Sequence Length Warmup is able to reduce the training time of GPT-style models by ~1.5x while still achieving the same loss as baselines.
 
-| ![SequenceLengthWarmup](https://storage.googleapis.com/docs.mosaicml.com/images/methods/seq_len_warmup.svg)|
+| ![SequenceLengthWarmup](../_images/seq_len_warmup.svg)|
 |:--|
 |*The sequence length used to train a model over the course of training. It increases linearly over the first 30% of training before reaching its full value for the remainder of training.*|
 
@@ -44,11 +44,14 @@ def training_loop(model, train_loader):
 <!--pytest.mark.gpu-->
 <!--
 ```python
-from tests.fixtures.synthetic_hf_state import make_dataset_configs, synthetic_hf_state_maker
+import os
+previous_platform_env = os.environ["MOSAICML_PLATFORM"]
+os.environ["MOSAICML_PLATFORM"] = "false"
+from tests.common.models import configure_tiny_bert_hf_model
+from tests.common.datasets import dummy_bert_lm_dataloader
 
-synthetic_config = make_dataset_configs(model_family=['bert'])[0]
-_, model, train_dataloader = synthetic_hf_state_maker(synthetic_config)
-_, _, eval_dataloader = synthetic_hf_state_maker(synthetic_config)
+model = configure_tiny_bert_hf_model()
+train_dataloader, eval_dataloader = dummy_bert_lm_dataloader(), dummy_bert_lm_dataloader()
 ```
 -->
 <!--pytest-codeblocks:cont-->
@@ -59,11 +62,17 @@ from composer.algorithms import SeqLengthWarmup
 trainer = Trainer(model=model,
                   train_dataloader=train_dataloader,
                   eval_dataloader=eval_dataloader,
-                  max_duration='250ep',
-                  algorithms=[SeqLengthWarmup()])
+                  max_duration='25ep',
+                  algorithms=[SeqLengthWarmup(max_seq_length=64)])
 
 trainer.fit()
 ```
+<!--pytest-codeblocks:cont-->
+<!--
+```python
+os.environ["MOSAICML_PLATFORM"] = previous_platform_env
+```
+-->
 
 ### Implementation Details
 

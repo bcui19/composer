@@ -9,20 +9,26 @@ from _pytest.monkeypatch import MonkeyPatch
 from tqdm import auto
 
 from composer.core.time import Time, TimeUnit
+from composer.loggers import ProgressBarLogger
 from composer.trainer.trainer import Trainer
 from composer.utils import dist
 from tests.common import RandomClassificationDataset, SimpleModel
 
 
-@pytest.mark.parametrize('world_size', [
-    pytest.param(1),
-    pytest.param(2, marks=pytest.mark.world_size(2)),
-])
+@pytest.mark.parametrize(
+    'world_size',
+    [
+        pytest.param(1),
+        pytest.param(2, marks=pytest.mark.world_size(2)),
+    ],
+)
 @pytest.mark.parametrize(
     'max_duration',
-    [Time.from_timestring('2ep'),
-     Time.from_timestring('100sp'),
-     Time.from_timestring('5ba')],
+    [
+        Time.from_timestring('2ep'),
+        Time.from_timestring('100sp'),
+        Time.from_timestring('5ba'),
+    ],
 )
 def test_progress_bar_logger(max_duration: Time[int], monkeypatch: MonkeyPatch, world_size: int):
 
@@ -96,3 +102,8 @@ def test_progress_bar_logger(max_duration: Time[int], monkeypatch: MonkeyPatch, 
     # test eval pbar
     for mt in mock_tqdms_eval:
         assert mt.update.call_count == eval_subset_num_batches
+
+
+def test_progress_bar_warning():
+    with pytest.warns(Warning):
+        Trainer(model=SimpleModel(), loggers=ProgressBarLogger())

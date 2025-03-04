@@ -11,7 +11,7 @@ The Composer :class:`.Trainer` implements a highly-optimized PyTorch training lo
    learning work, with reproducible results in time-to-train and
    accuracy.
 -  Integration with your favorite model hubs:
-   🤗 `Transformers`_, `TIMM`_, and `torchvision`_.
+   🤗 `Transformers`_ and `torchvision`_.
 -  Iterate faster! We take care of performance and efficiency.
 
 .. note::
@@ -33,7 +33,7 @@ minimally implementing the following methods:
 
 -  ``def forward(batch) -> outputs`` : computes the forward pass based
    on the ``batch`` returned from the dataloader.
--  ``def loss(batch, outputs)``: returns the loss based on the
+-  ``def loss(outputs, batch)``: returns the loss based on the
    ``outputs`` from the forward pass and the dataloader.
 
 For more information, see the :doc:`ComposerModel</composer_model>` guide.
@@ -98,7 +98,7 @@ A few tips and tricks for using our Trainer:
    means 10 epochs. See: :class:`.Time` for details.
 -  If you are using gradient accumulation, the ``batch_size`` in your
    dataloaders should be the per-device macrobatch size, i.e. the batch size of your
-   optimization update. For example, with ``grad_accum=2`` and
+   optimization update. For example, with ``device_train_microbatch_size=1024`` and
    ``batch_size=2048``, the trainer runs through two microbatches of size 1024
    each, then performs a gradient update step.
 -  At any time, most of the relevant quantities for debugging are
@@ -215,11 +215,12 @@ well as Composer's custom schedulers.
 .. testcode::
 
     from composer import Trainer
-    from composer.models import composer_resnet
+    from composer.models.tasks import ComposerClassifier
+    import torchvision.models as models
     from torch.optim import SGD
     from torch.optim.lr_scheduler import LinearLR
 
-    model = composer_resnet(model_name="resnet50", num_classes=1000)
+    model = ComposerClassifier(module=models.resnet18(), num_classes=1000)
     optimizer = SGD(model.parameters(), lr=0.1)
     scheduler = LinearLR(optimizer)
 
@@ -366,44 +367,6 @@ data parallel across 8 GPUs the dataloader should set ``batch_size=256``.
     Our :doc:`/notes/distributed_training` guide and
     the :mod:`composer.utils.dist` module.
 
-
-DeepSpeed Integration
-~~~~~~~~~~~~~~~~~~~~~
-
-Composer comes with DeepSpeed support, allowing you to leverage their
-full set of features that makes it easier to train large models across
-(1) any type of GPU and (2) multiple nodes. For more details on DeepSpeed,
-see `their website <https://www.deepspeed.ai>`__.
-
-To enable DeepSpeed, simply pass in a config as specified in the
-DeepSpeed docs `here <https://www.deepspeed.ai/docs/config-json/>`__.
-
-.. code:: python
-
-    # run_trainer.py
-
-    from composer import Trainer
-
-    trainer = Trainer(
-        model=model,
-        train_dataloader=train_dataloader,
-        eval_dataloader=eval_dataloader,
-        max_duration='160ep',
-        device='gpu',
-        deepspeed_config={
-            "train_batch_size": 2048,
-            "fp16": {"enabled": True},
-    })
-
-Providing an empty dictionary to DeepSpeed is also valid. The DeepSpeed
-defaults will be used and other fields (such as precision) will be inferred
-from the trainer.
-
-.. warning::
-
-    The ``deepspeed_config`` must not conflict with any other parameters
-    passed to the trainer.
-
 FSDP Integration (beta)
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -417,7 +380,6 @@ To enable FSDP, simply pass in as shown below:
 
     fsdp_config = {
         'sharding_strategy': 'FULL_SHARD',
-        'min_params': 1e9,
         'cpu_offload': False, # Not supported yet
         'mixed_precision': 'DEFAULT',
         'backward_prefetch': 'BACKWARD_POST',
@@ -429,16 +391,13 @@ To enable FSDP, simply pass in as shown below:
 
     trainer = Trainer(
         model=composer_model,
-        fsdp_config=fsdp_config,
+        parallelism_config={
+            'fsdp': fsdp_config,
+        },
         ...
     )
 
     trainer.fit()
-
-.. warning::
-
-    Right now ``fsdp_config`` doesn't support cpu_offloading.
-
 
 
 Callbacks
@@ -515,8 +474,8 @@ points during training and (2) load them back to resume training later.
         max_duration='160ep',
         device='gpu',
         # Checkpointing params
-        save_folder: 'checkpoints',
-        save_interval: '1ep'
+        save_folder='checkpoints',
+        save_interval='1ep',
     )
 
     # will save checkpoints to the 'checkpoints' folder every epoch
@@ -549,8 +508,8 @@ Gradient Accumulation
 ~~~~~~~~~~~~~~~~~~~~~
 
 Composer supports gradient accumulation, which allows training arbitrary
-logical batch sizes on any hardware by breaking the batch into ``grad_accum``
-different microbatches.
+logical batch sizes on any hardware by breaking the batch into different
+microbatches of size ``device_train_microbatch_size``.
 
 .. code:: python
 
@@ -558,20 +517,20 @@ different microbatches.
 
     trainer = Trainer(
         ...,
-        grad_accum=2,
+        device_train_microbatch_size=2,
     )
 
-If ``grad_accum=auto``, Composer will try to automatically determine the
-smallest ``grad_accum`` which the current hardware supports. In order to support automatic
-gradient accumulation, Composer initially sets ``grad_accum=1``. During the training process,
-if a Cuda Out of Memory Exception is encountered, indicating the current batch size is too
-large for the hardware, Composer catches this exception and continues training after doubling
-``grad_accum``. As a secondary benefit, automatic gradient accumulation is able to dynamically
-adjust throughout the training process. For example, when using :class:`.ProgressiveResizing`, input
-size increases throughout training. Composer automatically increases ``grad_accum`` only when
-required, such as when a Cuda OOM is encountered due to larger images, allowing for faster
-training at the start until image sizes are scaled up. Note that this feature is experimental
-and may not work with all algorithms.
+If ``device_train_microbatch_size=auto``, Composer will try to automatically determine the
+largest ``device_train_microbatch_size`` which the current hardware supports. In order to support
+automatic microbatching, Composer initially sets ``device_train_microbatch_size=batch_size``. During
+the training process, if a Cuda Out of Memory Exception is encountered, indicating the current batch
+size is too large for the hardware, Composer catches this exception and continues training after
+halving ``device_train_microbatch_size``. As a secondary benefit, automatic gradient accumulation is
+able to dynamically adjust throughout the training process. For example, when using
+:class:`.ProgressiveResizing`, input size increases throughout training. Composer automatically
+decreases ``device_train_microbatch_size`` only when required, such as when a Cuda OOM is encountered
+due to larger images, allowing for faster training at the start until image sizes are scaled up. Note
+that this feature is experimental and may not work with all algorithms.
 
 Reproducibility
 ~~~~~~~~~~~~~~~
@@ -627,5 +586,4 @@ This was just a quick tour of the features available within our trainer.
 Please see the other guides and notebooks for further details.
 
 .. _Transformers: https://huggingface.co/docs/transformers/index
-.. _TIMM: https://fastai.github.io/timmdocs/
 .. _torchvision: https://pytorch.org/vision/stable/models.html

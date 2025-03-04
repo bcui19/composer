@@ -32,11 +32,13 @@ class develop(develop_orig):
     def run(self):
         if _IS_ROOT and (not _IS_VIRTUALENV) and (not _IS_USER):
             raise RuntimeError(
-                textwrap.dedent("""\
+                textwrap.dedent(
+                    """\
                     When installing in editable mode as root outside of a virtual environment,
                     please specify `--user`. Editable installs as the root user outside of a virtual environment
-                    do not work without the `--user` flag. Please instead run something like: `pip install --user -e .`"""
-                               ))
+                    do not work without the `--user` flag. Please instead run something like: `pip install --user -e .`""",
+                ),
+            )
         super().run()
 
 
@@ -70,23 +72,26 @@ while True:
         break
     else:
         assert end != -1, 'there should be a balanced number of start and ends'
-        long_description = long_description[:start] + long_description[end + len(end_tag):]
+        long_description = long_description[:start] + \
+            long_description[end + len(end_tag):]
 
 install_requires = [
     'pyyaml>=6.0,<7',
     'tqdm>=4.62.3,<5',
-    'torchmetrics>=0.7.0,<0.10.0',
+    'torchmetrics>=1.0,<1.6.1',
     'torch_optimizer>=0.3.0,<0.4',
-    'torchvision>=0.10.0',  # torchvision has strict pytorch requirements
-    'torch>=1.10,<1.13',
+    'torchvision>=0.19.0,<0.21.1',
+    'torch>=2.4.0,<2.6.1',
     'requests>=2.26.0,<3',
-    'numpy>=1.21.5,<1.23.0',
-    'psutil>=5.8.0,<6',
+    'numpy>=1.21.5,<2.2.0',
+    'psutil>=5.8.0,<7',
     'coolname>=1.1.0,<3',
     'tabulate==0.9.0',  # for auto-generating tables
     'py-cpuinfo>=8.0.0,<10',
-    'packaging>=21.3.0,<22',
-    'importlib-metadata>=5.0.0,<6',
+    'packaging>=21.3.0,<24.3',
+    'importlib-metadata>=5.0.0,<9',
+    'mosaicml-cli>=0.5.25,<0.7',
+    'pillow>=10.3.0,<12',
 ]
 extra_deps = {}
 
@@ -96,73 +101,73 @@ extra_deps['dev'] = [
     # Imports for docs builds and running tests
     # Pinning versions strictly to avoid random test failures.
     # Should manually update dependency versions occassionally.
-    'custom_inherit==2.4.0',
-    'junitparser==2.8.0',
-    'coverage[toml]==6.5.0',
+    'custom_inherit==2.4.1',
+    'junitparser==3.1.2',
+    'coverage[toml]==7.6.8',
     'fasteners==0.18',  # object store tests require fasteners
-    'pytest==7.2.0',
-    'toml==0.10.2',
-    'ipython==7.32.0',
-    'ipykernel==6.16.2',
-    'jupyter==1.0.0',
-    'yamllint==1.28.0',
+    'pytest==7.4.4',
+    'ipython==8.11.0',
+    'ipykernel==6.29.5',
+    'jupyter==1.1.1',
+    'yamllint==1.35.1',
     'recommonmark==0.7.1',
     'sphinx==4.4.0',
-    'pre-commit>=2.18.1,<3',
+    'pre-commit>=3.4.0,<5',
     # embedding md in rst require docutils>=0.17. See
     # https://myst-parser.readthedocs.io/en/latest/sphinx/use.html?highlight=parser#include-markdown-files-into-an-rst-file
     'docutils==0.17.1',
     'sphinx_markdown_tables==0.0.17',
     'sphinx-argparse==0.4.0',
-    'sphinxcontrib.katex==0.9.0',
-    'sphinxext.opengraph==0.6.3',
+    'sphinxcontrib.katex==0.9.10',
+    'sphinxcontrib-applehelp==1.0.0',
+    'sphinxcontrib-devhelp==1.0.0',
+    'sphinxcontrib-htmlhelp==2.0.0',
+    'sphinxcontrib-serializinghtml==1.1.5',
+    'sphinxcontrib-qthelp==1.0.0',
+    'sphinxext.opengraph==0.9.1',
     'sphinxemoji==0.2.0',
     'furo==2022.9.29',
-    'sphinx-copybutton==0.5.0',
+    'sphinx-copybutton==0.5.2',
     'testbook==0.4.2',
     'myst-parser==0.16.1',
     'sphinx_panels==0.6.0',
     'sphinxcontrib-images==0.9.4',
-    'pytest_codeblocks==0.16.1',
-    'traitlets==5.5.0',
-    'nbsphinx==0.8.10',
-    'pandoc==2.2',
-    'pypandoc==1.10',
-    'GitPython==3.1.28',
-    'moto[s3]>=4.0.1,<5',
+    'pytest_codeblocks==0.17.0',
+    'traitlets==5.14.3',
+    'nbsphinx==0.9.1',
+    'pandoc==2.4',
+    'pypandoc==1.14',
+    'GitPython==3.1.43',
+    'moto[s3]>=5.0.1,<6',
     'mock-ssh-server==0.9.1',
-    'cryptography==38.0.3',
+    'cryptography==44.0.0',
     'pytest-httpserver>=1.0.4,<1.1',
     'setuptools<=59.5.0',
+    'scikit-learn>=1.2.0,<1.6',
 ]
 
-extra_deps['deepspeed'] = [
-    'deepspeed==0.5.10',  # TODO should this be >=0.5.10,<0.6
-]
+extra_deps['system_metrics_monitor'] = {
+    'pynvml>=11.5.0,<12',
+}
+
+extra_deps['slack'] = {
+    'slack_sdk>=3.19.5,<4',
+}
 
 extra_deps['wandb'] = [
-    'wandb>=0.13.2,<0.14',
+    'wandb>=0.13.2,<0.19',
 ]
 
 extra_deps['comet_ml'] = [
     'comet_ml>=3.31.12,<4.0.0',
 ]
 
+extra_deps['neptune'] = [
+    'neptune>=1.6.2,<2.0.0',
+]
+
 extra_deps['tensorboard'] = [
     'tensorboard>=2.9.1,<3.0.0',
-]
-
-extra_deps['unet'] = [
-    'monai>=0.9.1,<0.10',
-    'scikit-learn>=1.0.1,<2',
-]
-
-extra_deps['vit'] = [
-    'vit_pytorch==0.35.8',
-]
-
-extra_deps['timm'] = [
-    'timm>=0.5.4,<0.6',
 ]
 
 extra_deps['coco'] = [
@@ -170,7 +175,18 @@ extra_deps['coco'] = [
 ]
 
 extra_deps['nlp'] = [
-    'transformers>=4.11,<5',
+    'transformers>=4.11,!=4.34.0,<4.46',
+    'datasets>=2.4,<4',
+    'huggingface-hub>=0.21.2,<0.27',
+]
+
+extra_deps['peft'] = [
+    'peft>=0.10.0,<0.14',
+]
+
+extra_deps['sentencepiece'] = [
+    'protobuf<5.30',
+    'sentencepiece==0.2.0',
 ]
 
 extra_deps['mlperf'] = [
@@ -180,13 +196,21 @@ extra_deps['mlperf'] = [
 ]
 
 extra_deps['streaming'] = [
-    'mosaicml-streaming<0.2.*',
+    'mosaicml-streaming<1.0',
     'boto3>=1.21.45,<2',
-    'paramiko>=2.11.0,<3',
+    'paramiko>=3.4.0,<4',
 ]
 
 extra_deps['libcloud'] = [
     'apache-libcloud>=3.3.1,<4',
+]
+
+extra_deps['oci'] = [
+    'oci>=2.88.2,<3.0.0',
+]
+
+extra_deps['gcs'] = [
+    'google-cloud-storage>=2.0.0,<3.0',
 ]
 
 extra_deps['onnx'] = [
@@ -194,7 +218,17 @@ extra_deps['onnx'] = [
     'onnxruntime>=1.12.1,<2',
 ]
 
-extra_deps['all'] = set(dep for deps in extra_deps.values() for dep in deps)
+extra_deps['mlflow'] = [
+    'mlflow>=2.14.1,<3.0',
+    'databricks-sdk==0.44.1',
+    'pynvml>=11.5.0,<12',
+]
+
+extra_deps['pandas'] = ['pandas>=2.0.0,<3.0']
+
+extra_deps['databricks'] = ['databricks-sdk==0.44.1']
+
+extra_deps['all'] = {dep for deps in extra_deps.values() for dep in deps}
 
 composer_data_files = ['py.typed']
 composer_data_files += package_files('composer', 'yamls', '.yaml')
@@ -205,45 +239,40 @@ package_name = os.environ.get('COMPOSER_PACKAGE_NAME', 'mosaicml')
 if package_name != 'mosaicml':
     print(f'`Building composer as `{package_name}`)', file=sys.stderr)
 
-setup(name=package_name,
-      version=composer_version,
-      author='MosaicML',
-      author_email='team@mosaicml.com',
-      description=('Composer is a PyTorch library that enables you to train ' +
-                   'neural networks faster, at lower cost, and to higher accuracy.'),
-      long_description=long_description,
-      long_description_content_type='text/markdown',
-      url='https://github.com/mosaicml/composer',
-      include_package_data=True,
-      package_data={
-          'composer': composer_data_files,
-      },
-      packages=setuptools.find_packages(exclude=['docker*', 'examples*', 'scripts*', 'tests*']),
-      classifiers=[
-          'Programming Language :: Python :: 3',
-          'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9',
-      ],
-      install_requires=install_requires,
-      entry_points={
-          'console_scripts': [
-              'composer = composer.cli.launcher:main',
-              'composer_collect_env = composer.utils.collect_env:main',
-          ],
-      },
-      extras_require=extra_deps,
-      dependency_links=['https://developer.download.nvidia.com/compute/redist'],
-      python_requires='>=3.7',
-      ext_package='composer',
-      cmdclass={'develop': develop})
-
-# only visible if user installs with verbose -v flag
-# Printing to stdout as not to interfere with setup.py CLI flags (e.g. --version)
-print('*' * 20, file=sys.stderr)
-print(textwrap.dedent("""\
-    NOTE: For best performance, we recommend installing Pillow-SIMD
-    for accelerated image processing operations. To install:
-    \t pip uninstall pillow && pip install pillow-simd"""),
-      file=sys.stderr)
-print('*' * 20, file=sys.stderr)
+setup(
+    name=package_name,
+    version=composer_version,
+    author='MosaicML',
+    author_email='team@mosaicml.com',
+    description=(
+        'Composer is a PyTorch library that enables you to train ' +
+        'neural networks faster, at lower cost, and to higher accuracy.'
+    ),
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    url='https://github.com/mosaicml/composer',
+    include_package_data=True,
+    package_data={
+        'composer': composer_data_files,
+    },
+    packages=setuptools.find_packages(exclude=['docker*', 'examples*', 'scripts*', 'tests*']),
+    classifiers=[
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+    ],
+    install_requires=install_requires,
+    entry_points={
+        'console_scripts': [
+            'composer = composer.cli.launcher:main',
+            'composer_collect_env = composer.utils.collect_env:main',
+            'composer_validate_remote_path = composer.utils.file_helpers:validate_remote_path',
+        ],
+    },
+    extras_require=extra_deps,
+    dependency_links=['https://developer.download.nvidia.com/compute/redist'],
+    python_requires='>=3.9',
+    ext_package='composer',
+    cmdclass={'develop': develop},
+)

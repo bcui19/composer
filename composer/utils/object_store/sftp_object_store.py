@@ -10,7 +10,7 @@ import os
 import pathlib
 import urllib.parse
 import uuid
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 from composer.utils.import_helpers import MissingConditionalImportError
 from composer.utils.object_store.object_store import ObjectStore, ObjectStoreTransientError
@@ -25,7 +25,7 @@ except ImportError:
     _PARAMIKO_AVAILABLE = False
 
 
-def _set_kwarg(value: Any, kwargs: Dict[str, Any], arg_name: str, kwarg_name: str):
+def _set_kwarg(value: Any, kwargs: dict[str, Any], arg_name: str, kwarg_name: str):
     if kwarg_name in kwargs:
         raise ValueError(f'The `{arg_name}` should be not be specified directly if also included via `connect_kwargs`')
     kwargs[kwarg_name] = value
@@ -64,7 +64,7 @@ class SFTPObjectStore(ObjectStore):
             For custom logic, subclass :class:`paramiko.client.MissingHostKeyPolicy`, and provide an instance of this class.
         cwd (str, optional): The directory to navigate to upon creating the SSH connection. If not present
             it will be created.
-        connect_kwargs (Dict[str, Any], optional): Any additional kwargs to pass through to :meth:`.SSHClient.connect`.
+        connect_kwargs (dict[str, Any], optional): Any additional kwargs to pass through to :meth:`.SSHClient.connect`.
     """
 
     def __init__(
@@ -79,7 +79,7 @@ class SFTPObjectStore(ObjectStore):
         key_filename_environ: str = 'COMPOSER_SFTP_KEY_FILE',
         missing_host_key_policy: Union[str, paramiko.client.MissingHostKeyPolicy] = 'RejectPolicy',
         cwd: str = '',
-        connect_kwargs: Optional[Dict[str, Any]] = None,
+        connect_kwargs: Optional[dict[str, Any]] = None,
     ):
 
         if known_hosts_filename is None:
@@ -102,12 +102,14 @@ class SFTPObjectStore(ObjectStore):
             if url.username:
                 if username is not None:
                     raise ValueError(
-                        'If specifying the username in the `host`, then the `username` argument must be blank.')
+                        'If specifying the username in the `host`, then the `username` argument must be blank.',
+                    )
                 username = url.username
             if url.password:
                 if password is not None:
                     raise ValueError(
-                        'If specifying the password in the `host`, then the `password` argument must be blank.')
+                        'If specifying the password in the `host`, then the `password` argument must be blank.',
+                    )
                 password = url.password
             if url.port:
                 if port != 22:
@@ -160,7 +162,8 @@ class SFTPObjectStore(ObjectStore):
                 assert isinstance(missing_host_key_policy, paramiko.client.MissingHostKeyPolicy)
             except AttributeError:
                 raise ValueError(
-                    "Invalid `missing_host_key_policy`. Must be 'AutoAddPolicy', 'RejectPolicy', or 'WarningPolicy'.")
+                    "Invalid `missing_host_key_policy`. Must be 'AutoAddPolicy', 'RejectPolicy', or 'WarningPolicy'.",
+                )
         self.ssh_client.set_missing_host_key_policy(missing_host_key_policy)
         self.ssh_client.load_system_host_keys(known_hosts_filename)
         self._connect_kwargs = connect_kwargs
@@ -229,7 +232,8 @@ class SFTPObjectStore(ObjectStore):
             remote_file_size = self.get_object_size(object_name)
             if local_file_size != remote_file_size:
                 raise ObjectStoreTransientError(
-                    f'Size mismatch in put: local size ({local_file_size}) != remote size ({remote_file_size})')
+                    f'Size mismatch in put: local size ({local_file_size}) != remote size ({remote_file_size})',
+                )
 
     def download_object(
         self,

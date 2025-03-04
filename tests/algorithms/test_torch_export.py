@@ -7,31 +7,32 @@ torchscript, torch.fx, and ONNX.
 """
 import os
 import pathlib
-from typing import Any, Callable, Type
+from typing import Any, Callable
 
 import pytest
 import torch
 import torch.fx
 
-from composer.algorithms.blurpool.blurpool import BlurPool
-from composer.algorithms.channels_last.channels_last import ChannelsLast
-from composer.algorithms.factorize.factorize import Factorize
-from composer.algorithms.ghost_batchnorm.ghost_batchnorm import GhostBatchNorm
-from composer.algorithms.squeeze_excite.squeeze_excite import SqueezeExcite
-from composer.algorithms.stochastic_depth.stochastic_depth import StochasticDepth
-from composer.core.algorithm import Algorithm
-from composer.functional import (apply_blurpool, apply_channels_last, apply_factorization, apply_ghost_batchnorm,
-                                 apply_squeeze_excite, apply_stochastic_depth)
+from composer.algorithms import BlurPool, ChannelsLast, Factorize, GhostBatchNorm, SqueezeExcite, StochasticDepth
+from composer.core import Algorithm
+from composer.functional import (
+    apply_blurpool,
+    apply_channels_last,
+    apply_factorization,
+    apply_ghost_batchnorm,
+    apply_squeeze_excite,
+    apply_stochastic_depth,
+)
 from tests.algorithms.algorithm_settings import get_alg_kwargs, get_alg_model, get_algs_with_marks
 
 algo_kwargs = {
     apply_stochastic_depth: {
         'stochastic_method': 'block',
-        'target_layer_name': 'ResNetBottleneck'
+        'target_layer_name': 'ResNetBottleneck',
     },
     apply_ghost_batchnorm: {
-        'ghost_batch_size': 2
-    }
+        'ghost_batch_size': 2,
+    },
 }
 
 
@@ -49,7 +50,7 @@ torchscript_algs_with_marks = [
 # <--- torchscript export --->
 
 
-def get_surgery_method(alg_cls: Type[Algorithm]) -> Callable:
+def get_surgery_method(alg_cls: type[Algorithm]) -> Callable:
     if alg_cls is BlurPool:
         return apply_blurpool
     if alg_cls is Factorize:
@@ -66,7 +67,7 @@ def get_surgery_method(alg_cls: Type[Algorithm]) -> Callable:
 
 
 @pytest.mark.parametrize('alg_cls', torchscript_algs_with_marks)
-def test_surgery_torchscript_train(input: Any, alg_cls: Type[Algorithm]):
+def test_surgery_torchscript_train(input: Any, alg_cls: type[Algorithm]):
     """Tests torchscript model in train mode."""
     if alg_cls in (Factorize, GhostBatchNorm, StochasticDepth):
         pytest.xfail('Unsupported')
@@ -87,7 +88,7 @@ def test_surgery_torchscript_train(input: Any, alg_cls: Type[Algorithm]):
 
 
 @pytest.mark.parametrize('alg_cls', torchscript_algs_with_marks)
-def test_surgery_torchscript_eval(input: Any, alg_cls: Type[Algorithm]):
+def test_surgery_torchscript_eval(input: Any, alg_cls: type[Algorithm]):
     """Tests torchscript model in eval mode."""
     if alg_cls is Factorize:
         pytest.xfail('Unsupported')
@@ -112,7 +113,7 @@ def test_surgery_torchscript_eval(input: Any, alg_cls: Type[Algorithm]):
 @pytest.mark.parametrize('alg_cls', torchscript_algs_with_marks)
 def test_surgery_torchfx_eval(
     input: Any,
-    alg_cls: Type[Algorithm],
+    alg_cls: type[Algorithm],
 ):
     """Tests torch.fx model in eval mode."""
 
@@ -138,10 +139,12 @@ def test_surgery_torchfx_eval(
 
 @pytest.mark.parametrize('alg_cls', torchscript_algs_with_marks)
 @pytest.mark.filterwarnings(
-    r'ignore:Converting a tensor to a Python .* might cause the trace to be incorrect:torch.jit._trace.TracerWarning')
+    r'ignore:Converting a tensor to a Python .* might cause the trace to be incorrect:torch.jit._trace.TracerWarning',
+)
+@pytest.mark.filterwarnings('ignore:__floordiv__ is deprecated')
 def test_surgery_onnx(
     input: Any,
-    alg_cls: Type[Algorithm],
+    alg_cls: type[Algorithm],
     tmp_path: pathlib.Path,
 ):
     """Tests onnx export and runtime"""
@@ -170,10 +173,10 @@ def test_surgery_onnx(
 
     # check onnx model
     onnx_model = onnx.load(onnx_path)
-    onnx.checker.check_model(onnx_model)
+    onnx.checker.check_model(onnx_model)  # type: ignore (third-party)
 
     # run inference
-    ort_session = ort.InferenceSession(onnx_path)
+    ort_session = ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider'])
     outputs = ort_session.run(
         None,
         {'input': input[0].numpy()},

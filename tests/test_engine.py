@@ -1,12 +1,14 @@
 # Copyright 2022 MosaicML Composer authors
 # SPDX-License-Identifier: Apache-2.0
 
+import importlib
 import logging
 import os
 import subprocess
 import sys
 import textwrap
-from typing import List
+import threading
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -16,18 +18,20 @@ from composer.core import Engine, Event
 from composer.core.algorithm import Algorithm
 from composer.core.callback import Callback
 from composer.core.state import State
-from composer.loggers import Logger
+from composer.loggers import Logger, LoggerDestination
 from tests.common.events import EventCounterCallback
 
 
 @pytest.fixture
 def always_match_algorithms():
     return [
-        Mock(**{
-            'match.return.value': True,
-            'apply.return_value': n,  # return encodes order
-            'interpolate_loss': False,
-        }) for n in range(5)
+        Mock(
+            **{
+                'match.return.value': True,
+                'apply.return_value': n,  # return encodes order
+                'interpolate_loss': False,
+            },
+        ) for n in range(5)
     ]
 
 
@@ -47,38 +51,101 @@ def run_event(event: Event, state: State, logger: Logger):
     return runner.run_event(event)
 
 
+class DummyCallback(Callback):
+
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    def init(self, state: State, logger: Logger):
+        with open(self.file_path, 'a') as f:
+            f.write('init callback, ')
+
+    def batch_end(self, state: State, logger: Logger):
+        with open(self.file_path, 'a') as f:
+            f.write('on_batch_end callback, ')
+
+
+class DummyLoggerDestination(LoggerDestination):
+
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    def init(self, state: State, logger: Logger):
+        with open(self.file_path, 'a') as f:
+            f.write('init logger, ')
+
+    def batch_end(self, state: State, logger: Logger):
+        with open(self.file_path, 'a') as f:
+            f.write('on_batch_end logger, ')
+
+
+def test_engine_runs_callbacks_in_correct_order(dummy_state, tmp_path):
+    file_path = tmp_path / Path('event_check.txt')
+    dummy_state.callbacks = [DummyCallback(file_path), DummyLoggerDestination(file_path)]
+    logger = Logger(dummy_state)
+    engine = Engine(dummy_state, logger)
+    engine.run_event(Event.INIT)
+    engine.run_event(Event.BATCH_END)
+    engine.run_event(Event.EPOCH_END)
+    engine.close()
+    expected_lines = ['init logger, init callback, on_batch_end callback, on_batch_end logger, ']
+    with open(file_path, 'r') as f:
+        actual_lines = f.readlines()
+    assert expected_lines == actual_lines
+
+
 @pytest.mark.parametrize('event', list(Event))
 class TestAlgorithms:
 
-    def test_algorithms_always_called(self, event: Event, dummy_state: State, always_match_algorithms: List[Algorithm],
-                                      dummy_logger: Logger):
+    def test_algorithms_always_called(
+        self,
+        event: Event,
+        dummy_state: State,
+        always_match_algorithms: list[Algorithm],
+        dummy_logger: Logger,
+    ):
         dummy_state.algorithms = always_match_algorithms
         _ = run_event(event, dummy_state, dummy_logger)
         for algo in always_match_algorithms:
             algo.apply.assert_called_once()
             algo.match.assert_called_once()
 
-    def test_algorithms_never_called(self, event: Event, dummy_state: State, never_match_algorithms: List[Algorithm],
-                                     dummy_logger: Logger):
+    def test_algorithms_never_called(
+        self,
+        event: Event,
+        dummy_state: State,
+        never_match_algorithms: list[Algorithm],
+        dummy_logger: Logger,
+    ):
         dummy_state.algorithms = never_match_algorithms
         _ = run_event(event, dummy_state, dummy_logger)
         for algo in never_match_algorithms:
             algo.apply.assert_not_called()
             algo.match.assert_called_once()
 
-    def test_engine_trace_all(self, event: Event, dummy_state: State, always_match_algorithms: List[Algorithm],
-                              dummy_logger: Logger):
+    def test_engine_trace_all(
+        self,
+        event: Event,
+        dummy_state: State,
+        always_match_algorithms: list[Algorithm],
+        dummy_logger: Logger,
+    ):
         dummy_state.algorithms = always_match_algorithms
         trace = run_event(event, dummy_state, dummy_logger)
 
-        assert all([tr.run for tr in trace.values()])
+        assert all(tr.run for tr in trace.values())
 
-    def test_engine_trace_never(self, event: Event, dummy_state: State, never_match_algorithms: List[Algorithm],
-                                dummy_logger: Logger):
+    def test_engine_trace_never(
+        self,
+        event: Event,
+        dummy_state: State,
+        never_match_algorithms: list[Algorithm],
+        dummy_logger: Logger,
+    ):
         dummy_state.algorithms = never_match_algorithms
         trace = run_event(event, dummy_state, dummy_logger)
 
-        assert all([tr.run is False for tr in trace.values()])
+        assert all(tr.run is False for tr in trace.values())
 
 
 def test_engine_is_dead_after_close(dummy_state: State, dummy_logger: Logger):
@@ -170,8 +237,10 @@ def test_engine_errors_if_previous_trainer_was_not_closed(dummy_state: State, du
 
     # Create a new trainer with the same callback. Should raise an exception
     # because trainer.close() was not called before
-    with pytest.raises(RuntimeError,
-                       match=r'Cannot create a new trainer with an open callback or logger from a previous trainer'):
+    with pytest.raises(
+        RuntimeError,
+        match=r'Cannot create a new trainer with an open callback or logger from a previous trainer',
+    ):
         DummyTrainer(dummy_state, dummy_logger)
 
 
@@ -180,14 +249,16 @@ def check_output(proc: subprocess.CompletedProcess):
     # The `check=True` flag available in `subprocess.run` does not print stdout/stderr
     if proc.returncode == 0:
         return
-    error_msg = textwrap.dedent(f"""\
+    error_msg = textwrap.dedent(
+        f"""\
         Command {proc.args} failed with exit code {proc.returncode}.
         ----Begin stdout----
         {proc.stdout}
         ----End stdout------
         ----Begin stderr----
         {proc.stderr}
-        ----End stderr------""")
+        ----End stderr------""",
+    )
 
     raise RuntimeError(error_msg)
 
@@ -196,7 +267,8 @@ def check_output(proc: subprocess.CompletedProcess):
 def test_engine_closes_on_atexit(exception: bool):
     # Running this test via a subprocess, as atexit() must trigger
 
-    code = textwrap.dedent("""\
+    code = textwrap.dedent(
+        """\
     from composer import Trainer, Callback
     from tests.common import SimpleModel
 
@@ -212,7 +284,8 @@ def test_engine_closes_on_atexit(exception: bool):
         max_duration="1ep",
         train_dataloader=None,
     )
-    """)
+    """,
+    )
     if exception:
         # Should raise an exception, since no dataloader was provided
         code += 'trainer.fit()'
@@ -233,20 +306,34 @@ def test_logging(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Test that engine logs statements as expected"""
-    caplog.set_level(logging.DEBUG, logger=Engine.__module__)
-    # Include a callback, since most logging happens around callback events
-    dummy_state.callbacks = [EventCounterCallback()]
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger=Engine.__module__):
+        # Include a callback, since most logging happens around callback events
+        dummy_state.callbacks = [EventCounterCallback()]
 
-    monkeypatch.setenv('ENGINE_DEBUG', '1')
-    engine = Engine(dummy_state, dummy_logger)
-    engine.run_event('INIT')
-    engine.close()
+        monkeypatch.setenv('ENGINE_DEBUG', '1')
+        engine = Engine(dummy_state, dummy_logger)
+        engine.run_event('INIT')
+        engine.close()
 
-    # Validate that we have the expected log entries
-    assert caplog.record_tuples == [
-        ('composer.core.engine', 10, '[ep=0][ba=0][event=INIT]: Running event'),
-        ('composer.core.engine', 10, '[ep=0][ba=0][event=INIT]: Running callback EventCounterCallback'),
-        ('composer.core.engine', 10, 'Closing the engine'),
-        ('composer.core.engine', 10, 'Closing callback EventCounterCallback'),
-        ('composer.core.engine', 10, 'Post-closing callback EventCounterCallback'),
-    ]
+        # Validate that we have the expected log entries
+        assert caplog.record_tuples == [
+            ('composer.core.engine', 10, '[ep=0][ba=0][event=INIT]: Running event'),
+            ('composer.core.engine', 10, '[ep=0][ba=0][event=INIT]: Running callback EventCounterCallback'),
+            ('composer.core.engine', 10, 'Closing the engine.'),
+            ('composer.core.engine', 10, 'Closing callback EventCounterCallback'),
+            ('composer.core.engine', 10, 'Post-closing callback EventCounterCallback'),
+            ('composer.core.engine', 10, 'Engine closed.'),
+        ]
+
+
+def _worker():
+    import composer.core.engine
+    importlib.reload(composer.core.engine)
+
+
+def test_graceful_fallback_when_signal_handler_cannot_be_set():
+    # https://github.com/mosaicml/composer/issues/3151#issue-2205981731
+    t = threading.Thread(target=_worker)
+    t.start()
+    t.join()

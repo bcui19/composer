@@ -24,7 +24,7 @@ class SimpleModel(composer.models.ComposerClassifier):
             torch.nn.Linear(num_hidden, num_classes),
         )
         self.num_classes = num_classes
-        super().__init__(module=module)
+        super().__init__(module=module, num_classes=num_classes)
 
 
 # Your custom train dataloader
@@ -44,10 +44,12 @@ eval_dataloader = torch.utils.data.DataLoader(
 )
 
 # Initialize Trainer with custom model, custom train and eval datasets, and algorithms to train with
-trainer = Trainer(model=SimpleModel(num_hidden=128, num_classes=10),
-                  train_dataloader=train_dataloader,
-                  eval_dataloader=eval_dataloader,
-                  max_duration='3ep',
-                  algorithms=[CutOut(num_holes=1, length=0.5), LabelSmoothing(0.1)])
+trainer = Trainer(
+    model=SimpleModel(num_hidden=128, num_classes=10),
+    train_dataloader=train_dataloader,
+    eval_dataloader=eval_dataloader,
+    max_duration='3ep',
+    algorithms=[CutOut(num_holes=1, length=0.5), LabelSmoothing(0.1)],
+)
 
 trainer.fit()
